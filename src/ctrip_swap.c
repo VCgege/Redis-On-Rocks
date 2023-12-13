@@ -783,7 +783,7 @@ int swapTest(int argc, char **argv, int accurate) {
   result += swapBatchTest(argc, argv, accurate);
   result += cuckooFilterTest(argc, argv, accurate);
   result += swapPersistTest(argc, argv, accurate);
-
+  result += roaringBitmapTest(argc, argv, accurate);
   return result;
 }
 #endif
