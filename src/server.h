@@ -233,6 +233,7 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define CMD_SWAP_DATATYPE_SET (1ULL<<43)
 #define CMD_SWAP_DATATYPE_ZSET (1ULL<<44)
 #define CMD_SWAP_DATATYPE_LIST (1ULL<<45)
+#define CMD_SWAP_DATATYPE_BITMAP (1ULL<<45)
 
 
 /* AOF states */
@@ -534,6 +535,7 @@ typedef enum {
 #define OBJ_SET 2       /* Set object. */
 #define OBJ_ZSET 3      /* Sorted set object. */
 #define OBJ_HASH 4      /* Hash object. */
+#define OBJ_BITMAP 7    /* bitmap object */
 
 /* The "module" object type is a special one that signals that the object
  * is one directly managed by a Redis module. In this case the value points

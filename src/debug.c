@@ -140,7 +140,7 @@ void xorObjectDigest(redisDb *db, robj *keyobj, unsigned char *digest, robj *o) 
     char buf[128];
 
     /* Save the key and associated value */
-    if (o->type == OBJ_STRING) {
+    if (o->type == OBJ_STRING || o->type == OBJ_BITMAP) {
         mixStringObjectDigest(digest,o);
     } else if (o->type == OBJ_LIST) {
         listTypeIterator *li = listTypeInitIterator(o,0,LIST_TAIL);

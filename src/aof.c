@@ -1486,14 +1486,14 @@ int rewriteAppendOnlyFileRio(rio *aof) {
             expiretime = getExpire(db,&key);
 
             /* Save the key and associated value */
-            if (o->type == OBJ_STRING) {
+            if (o->type == OBJ_STRING || o->type ==OBJ_BITMAP) {
                 /* Emit a SET command */
                 char cmd[]="*3\r\n$3\r\nSET\r\n";
                 if (rioWrite(aof,cmd,sizeof(cmd)-1) == 0) goto werr;
                 /* Key and value */
                 if (rioWriteBulkObject(aof,&key) == 0) goto werr;
                 if (rioWriteBulkObject(aof,o) == 0) goto werr;
-            } else if (o->type == OBJ_LIST) {
+            } else if (o->type == OBJ_LIST || o->type == OBJ_BITMAP) {
                 if (rewriteListObject(aof,&key,o) == 0) goto werr;
             } else if (o->type == OBJ_SET) {
                 if (rewriteSetObject(aof,&key,o) == 0) goto werr;

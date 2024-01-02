@@ -39,6 +39,7 @@ struct SwapDataTypeItem {
     {"swap_set", CMD_SWAP_DATATYPE_SET},
     {"swap_zset", CMD_SWAP_DATATYPE_ZSET},
     {"swap_list", CMD_SWAP_DATATYPE_LIST},
+    {"swap_bitmap", CMD_SWAP_DATATYPE_BITMAP},
     {NULL,0} /* Terminator. */
 };
 /* Given the category name the command returns the corresponding flag, or
@@ -1114,6 +1115,53 @@ int getKeyRequestsDebug(int dbid, struct redisCommand *cmd, robj **argv,
     } else {
         return getKeyRequestsNone(dbid,cmd,argv,argc,result);
     }
+}
+
+int getKeyRequestsSetbit(int dbid, struct redisCommand *cmd, robj **argv,
+                         int argc, struct getKeyRequestsResult *result) {
+    long long start;
+    if (getLongLongFromObject(argv[2],&start) != C_OK) return -1;
+    getKeyRequestsSingleKeyWithRanges(dbid,cmd,argv,argc,
+                                      result,1,2,-1,1/*num_ranges*/,start,start);
+    return 0;
+}
+
+int getKeyRequestsGetbit(int dbid, struct redisCommand *cmd, robj **argv,
+                         int argc, struct getKeyRequestsResult *result) {
+    long long start;
+    if (getLongLongFromObject(argv[2],&start) != C_OK) return -1;
+    getKeyRequestsSingleKeyWithRanges(dbid,cmd,argv,argc,
+                                      result,1,2,-1,1/*num_ranges*/,start,start);
+    return 0;
+}
+
+int getKeyRequestsBitcount(int dbid, struct redisCommand *cmd, robj **argv,
+                         int argc, struct getKeyRequestsResult *result) {
+    long long start, end;
+    if (getLongLongFromObject(argv[2],&start) != C_OK) return -1;
+    if (getLongLongFromObject(argv[3],&end) != C_OK) return -1;
+    getKeyRequestsSingleKeyWithRanges(dbid,cmd,argv,argc,
+                                      result,1,2,3,1/*num_ranges*/,start,end);
+    return 0;
+}
+
+int getKeyRequestsBitpos(int dbid, struct redisCommand *cmd, robj **argv,
+                         int argc, struct getKeyRequestsResult *result) {
+    long long start, end;
+    if (getLongLongFromObject(argv[3],&start) != C_OK) return -1;
+    if (getLongLongFromObject(argv[4],&end) != C_OK) return -1;
+    getKeyRequestsSingleKeyWithRanges(dbid,cmd,argv,argc,
+                                      result,1,3,4,1/*num_ranges*/,start,end);
+    return 0;
+}
+
+int getKeyRequestsBitField(int dbid, struct redisCommand *cmd, robj **argv,
+                         int argc, struct getKeyRequestsResult *result) {
+
+    getKeyRequestsSingleKeyWithRanges(dbid, cmd, argv, argc,
+                                      result, 1, -1, -1, 1/*num_ranges*/, -1, -1); /* source */
+    getKeyRequestsSingleKey(result, argv[2], SWAP_IN, SWAP_IN_META, cmd->flags | CMD_SWAP_DATATYPE_KEYSPACE, dbid);
+    return 0;
 }
 
 #ifdef REDIS_TEST

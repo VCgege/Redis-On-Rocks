@@ -351,6 +351,9 @@ int swapDataSetupMeta(swapData *d, int object_type, long long expire,
     case OBJ_STREAM:
         retval = SWAP_ERR_SETUP_UNSUPPORTED;
         break;
+    case OBJ_BITMAP:
+        retval = swapDataSetupBitmap(d, datactx);
+        break;
     default:
         retval = SWAP_ERR_SETUP_FAIL;
         break;

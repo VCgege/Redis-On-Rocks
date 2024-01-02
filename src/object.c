@@ -386,7 +386,10 @@ void decrRefCount(robj *o) {
     if (o->refcount == 1) {
         o->refcount--;
         switch(o->type) {
-        case OBJ_STRING: if (o->ptr) freeStringObject(o); break;
+        case OBJ_STRING:
+        case OBJ_BITMAP:
+            if (o->ptr) freeStringObject(o);
+            break;
         case OBJ_LIST: if (o->ptr) freeListObject(o); break;
         case OBJ_SET: if (o->ptr) freeSetObject(o); break;
         case OBJ_ZSET: if (o->ptr) freeZsetObject(o); break;
@@ -822,7 +825,7 @@ size_t objectComputeSize(robj *o, size_t sample_size) {
     struct dictEntry *de;
     size_t asize = 0, elesize = 0, samples = 0;
 
-    if (o->type == OBJ_STRING) {
+    if (o->type == OBJ_STRING || o->type == OBJ_BITMAP) {
         if(o->encoding == OBJ_ENCODING_INT) {
             asize = sizeof(*o);
         } else if(o->encoding == OBJ_ENCODING_RAW) {

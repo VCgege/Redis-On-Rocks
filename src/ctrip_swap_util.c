@@ -75,6 +75,7 @@ const char *strObjectType(int type) {
     case OBJ_SET: return "set";
     case OBJ_ZSET: return "zset";
     case OBJ_STREAM: return "stream";
+    case OBJ_BITMAP: return "bitmap";
     default: return "unknown";
     }
 }

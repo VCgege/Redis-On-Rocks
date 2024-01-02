@@ -47,6 +47,8 @@ static inline objectMetaType *getObjectMetaType(int object_type) {
     case OBJ_LIST:
         omtype = &listObjectMetaType;
         break;
+    case OBJ_BITMAP:
+        omtype = &bitmapObjectMetaType;
     default:
         break;
     }
@@ -297,6 +299,7 @@ size_t objectEstimateSize(robj *o) {
 
     switch (o->type) {
     case OBJ_STRING:
+    case OBJ_BITMAP:
         asize = objectComputeSize(o,OBJECT_ESTIMATE_SIZE_SAMPLE);
         break;
     case OBJ_HASH:

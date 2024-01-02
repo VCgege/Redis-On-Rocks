@@ -56,10 +56,10 @@ extern const char *swap_cf_names[CF_COUNT];
 /* --- cmd intention flags --- */
 /* Delete key in rocksdb when swap in. */
 #define SWAP_IN_DEL (1U<<0)
-/* Only need to swap meta for hash/set/zset/list  */
+/* Only need to swap meta for hash/set/zset/list/bitmap  */
 #define SWAP_IN_META (1U<<1)
 /* Delete key in rocksdb and mock value needed to be swapped in. */
-#define SWAP_IN_DEL_MOCK_VALUE (1U<<2)
+#define SWAP_IN_DEL_MOCK_VALUE (1U<<2)    // todo  Q
 /* Data swap in will be overwritten by fun dbOverwrite
  * same as SWAP_IN_DEL for collection type(SET, ZSET, LISH, HASH...), same as SWAP_IN for STRING */
 #define SWAP_IN_OVERWRITE (1U<<3)
@@ -163,7 +163,7 @@ typedef struct range {
 #define KEYREQUEST_TYPE_SCORE  3
 
 typedef struct argRewriteRequest {
-  int mstate_idx; /* >=0 if current command is a exec, means index in mstate; -1 means req not in multi/exec */
+  int mstate_idx; /* >=0 if current command is a exec, means index in mstate; -1 means req not in multi/exec */ // todo q
   int arg_idx; /* index of argument to rewrite */
 } argRewriteRequest;
 
@@ -185,7 +185,7 @@ typedef struct keyRequest{
     struct {
       int num_subkeys;
       robj **subkeys;
-    } b; /* subkey: hash, set */
+    } b; /* subkey: hash, set, bitmap */
     struct {
       int num_ranges;
       range *ranges;
@@ -282,6 +282,12 @@ int getKeyRequestsGtid(int dbid, struct redisCommand *cmd, robj **argv, int argc
 int getKeyRequestsGtidAuto(int dbid, struct redisCommand *cmd, robj **argv, int argc, struct getKeyRequestsResult *result);
 
 int getKeyRequestsDebug(int dbid, struct redisCommand *cmd, robj **argv, int argc, struct getKeyRequestsResult *result);
+int getKeyRequestsSetbit(int dbid, struct redisCommand *cmd, robj **argv, int argc, struct getKeyRequestsResult *result);
+int getKeyRequestsGetbit(int dbid, struct redisCommand *cmd, robj **argv, int argc, struct getKeyRequestsResult *result);
+int getKeyRequestsBitcount(int dbid, struct redisCommand *cmd, robj **argv, int argc, struct getKeyRequestsResult *result);
+int getKeyRequestsBitpos(int dbid, struct redisCommand *cmd, robj **argv, int argc, struct getKeyRequestsResult *result);
+int getKeyRequestsBitop(int dbid, struct redisCommand *cmd, robj **argv, int argc, struct getKeyRequestsResult *result);
+int getKeyRequestsBitField(int dbid, struct redisCommand *cmd, robj **argv, int argc, struct getKeyRequestsResult *result);
 
 #define GET_KEYREQUESTS_RESULT_INIT { {{0}}, NULL, NULL, 0, MAX_KEYREQUESTS_BUFFER}
 
@@ -490,6 +496,7 @@ typedef struct objectMeta {
 
 extern objectMetaType lenObjectMetaType;
 extern objectMetaType listObjectMetaType;
+extern objectMetaType bitmapObjectMetaType;
 
 static inline void swapInitVersion() { server.swap_key_version = 1; }
 static inline void swapSetVersion(uint64_t version) { server.swap_key_version = version; }
@@ -902,6 +909,18 @@ int swapDataSetupZSet(swapData *d, OUT void **datactx);
 #define createZsetObjectMeta(version, len) createLenObjectMeta(OBJ_ZSET, version, len)
 #define zsetObjectMetaType lenObjectMetaType
 
+
+/* bitmap */
+// todo
+typedef struct bitmapDataCtx {
+    struct bitmapMeta *swap_meta;
+    argRewriteRequest arg_reqs[2];
+    int ctx_flag;
+} bitmapDataCtx;
+
+objectMeta *createBitmapObjectMeta(uint64_t version, MOVE struct bitmapMeta *bitmap_meta);
+
+int swapDataSetupBitmap(swapData *d, void **pdatactx);
 
 /* MetaScan */
 #define DEFAULT_SCANMETA_BUFFER 16

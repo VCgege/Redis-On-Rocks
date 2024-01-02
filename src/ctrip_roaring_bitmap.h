@@ -79,5 +79,8 @@ void rbmClearBitRange(roaringBitmap* rbm, uint32_t minBit, uint32_t maxBit);
 
 uint32_t rbmGetBitRange(roaringBitmap* rbm, uint32_t minBit, uint32_t maxBit);
 
+void rbmdup(roaringBitmap* destRbm, roaringBitmap* srcRbm);
+
+int rbmIsEqual(roaringBitmap* destRbm, roaringBitmap* srcRbm);
 
 #endif // __CTRIP_ROARING_BITMAP_H__

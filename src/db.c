@@ -1192,6 +1192,7 @@ char* getObjectTypeName(robj *o) {
         case OBJ_ZSET: type = "zset"; break;
         case OBJ_HASH: type = "hash"; break;
         case OBJ_STREAM: type = "stream"; break;
+        case OBJ_BITMAP: type = "bitmap"; break;
         case OBJ_MODULE: {
             moduleValue *mv = o->ptr;
             type = mv->type->name;
@@ -1412,7 +1413,10 @@ void copyCommand(client *c) {
     /* Duplicate object according to object's type. */
     robj *newobj;
     switch(o->type) {
-        case OBJ_STRING: newobj = dupStringObject(o); break;
+        case OBJ_STRING:
+        case OBJ_BITMAP:
+            newobj = dupStringObject(o);
+            break;
         case OBJ_LIST: newobj = listTypeDup(o); break;
         case OBJ_SET: newobj = setTypeDup(o); break;
         case OBJ_ZSET: newobj = zsetDup(o); break;

@@ -186,6 +186,7 @@ int wholeKeyDecodeData(swapData *data, int num, int *cfs, sds *rawkeys,
 robj *dupSharedObject(robj *o) {
     switch(o->type) {
     case OBJ_STRING:
+    case OBJ_BITMAP:
         return dupStringObject(o);
     case OBJ_HASH:
     case OBJ_LIST:
