@@ -251,8 +251,10 @@ int setSwapAna(swapData *data, int thd, struct keyRequest *req,
 
                 /* create new meta if needed */
                 if (!swapDataPersisted(data)) {
-                    swapDataSetNewObjectMeta(data,
-                            createSetObjectMeta(swapGetAndIncrVersion(),0));
+                    objectMeta *object_meta = lookupMeta(data->db, data->key);
+                    serverAssert(object_meta != NULL);
+                    objectMeta *new_meta = createSetObjectMeta(object_meta,0);
+                    swapDataSetNewObjectMeta(data, new_meta);
                 }
 
                 if (noswap) {
@@ -489,16 +491,11 @@ int setSwapDel(swapData *data, void *datactx_, int del_skip) {
     if (datactx->ctx.ctx_flag & BIG_DATA_CTX_FLAG_MOCK_VALUE) {
         createFakeSetForDeleteIfCold(data);
     }
-    if (del_skip) {
-        if (!swapDataIsCold(data))
-            dbDeleteMeta(data->db,data->key);
-        return 0;
-    } else {
-        if (!swapDataIsCold(data))
-            /* both value/object_meta/expire are deleted */
-            dbDelete(data->db,data->key);
-        return 0;
+    if (!del_skip && !swapDataIsCold(data)) {
+        /* both value/object_meta/expire are deleted */
+        dbDelete(data->db, data->key);
     }
+    return 0;
 }
 
 /* Decoded moved back by exec to setSwapData */
@@ -723,8 +720,8 @@ void setLoadStartIntset(struct rdbKeyLoadData *load, rio *rdb, int *cf,
     extend = rocksEncodeObjectMetaLen(load->total_fields);
     *cf = META_CF;
     *rawkey = rocksEncodeMetaKey(load->db,load->key);
-    *rawval = rocksEncodeMetaVal(load->object_type,load->expire,
-            load->version,extend);
+    *rawval = rocksEncodeMetaVal(load->swap_type, load->expire,
+                                 load->version, extend);
     sdsfree(extend);
 }
 
@@ -816,7 +813,7 @@ rdbKeyLoadType setLoadType = {
 void setLoadInit(rdbKeyLoadData *load) {
     load->type = &setLoadType;
     load->omtype = &setObjectMetaType;
-    load->object_type = OBJ_SET;
+    load->swap_type = SWAP_SET;
 }
 
 #ifdef REDIS_TEST
@@ -1171,7 +1168,7 @@ int swapDataSetTest(int argc, char **argv, int accurate) {
 
         rocksDecodeMetaVal(subraw, sdslen(subraw), &t, &e, &v, &extend, &extlen);
         buildObjectMeta(t,v,extend,extlen,&cold_meta);
-        test_assert(cold_meta->object_type == OBJ_SET && cold_meta->len == 4 && e == -1);
+        test_assert(cold_meta->swap_type == OBJ_SET && cold_meta->len == 4 && e == -1);
 
         cont = setLoad(loadData,&sdsrdb,&cf,&subkey,&subraw,&err);
         test_assert(cont == 1 && err == 0 && cf == DATA_CF);
@@ -1181,7 +1178,7 @@ int swapDataSetTest(int argc, char **argv, int accurate) {
         test_assert(cont == 1 && err == 0 && cf == DATA_CF);
         cont = setLoad(loadData,&sdsrdb,&cf,&subkey,&subraw,&err);
         test_assert(cont == 0 && err == 0 && cf == DATA_CF);
-        test_assert(loadData->object_type == OBJ_SET);
+        test_assert(loadData->swap_type == OBJ_SET);
         test_assert(loadData->total_fields == 4 && loadData->loaded_fields == 4);
         setLoadDeinit(loadData);
 
@@ -1201,7 +1198,7 @@ int swapDataSetTest(int argc, char **argv, int accurate) {
 
         rocksDecodeMetaVal(subraw, sdslen(subraw), &t, &e, &v, &extend, &extlen);
         buildObjectMeta(t,v,extend,extlen,&cold_meta);
-        test_assert(cold_meta->object_type == OBJ_SET && cold_meta->len == 4 && e == -1);
+        test_assert(cold_meta->swap_type == OBJ_SET && cold_meta->len == 4 && e == -1);
 
         cont = setLoad(loadData,&sdsrdb,&cf,&subkey,&subraw,&err);
         test_assert(cont == 1 && err == 0 && cf == DATA_CF);
@@ -1211,7 +1208,7 @@ int swapDataSetTest(int argc, char **argv, int accurate) {
         test_assert(cont == 1 && err == 0 && cf == DATA_CF);
         cont = setLoad(loadData,&sdsrdb,&cf,&subkey,&subraw,&err);
         test_assert(cont == 0 && err == 0 && cf == DATA_CF);
-        test_assert(loadData->object_type == OBJ_SET);
+        test_assert(loadData->swap_type == OBJ_SET);
         test_assert(loadData->total_fields == 4 && loadData->loaded_fields == 4);
         setLoadDeinit(loadData);
 
@@ -1226,7 +1223,7 @@ int swapDataSetTest(int argc, char **argv, int accurate) {
         decoded_meta->key = decoded_data->key = key1->ptr;
         decoded_meta->cf = META_CF, decoded_data->cf = DATA_CF;
         decoded_meta->version = 0, decoded_data->version = 0;
-        decoded_meta->object_type = OBJ_SET, decoded_meta->expire = -1;
+        decoded_meta->swap_type = OBJ_SET, decoded_meta->expire = -1;
         decoded_data->rdbtype = 0;
 
         /* rdbSave - save cold */

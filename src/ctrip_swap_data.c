@@ -78,10 +78,6 @@ int swapDataKeyRequestFinished(swapData *data) {
         dbSetMetaDirty(data->db,data->key);
     }
 
-    if (data->persistence_deleted) {
-        dbDeleteMeta(data->db, data->key);
-    }
-
     if (data->set_persist_keep && !getObjectPersistKeep(data->value)) {
         setObjectPersistKeep(data->value);
     }
@@ -308,7 +304,7 @@ sds swapDataEncodeMetaVal(swapData *d, void *datactx) {
         void *omaux = swapDataGetObjectMetaAux(d,datactx);
         extend = d->omtype->encodeObjectMeta(object_meta,omaux);
     }
-    encoded = rocksEncodeMetaVal(d->object_type,d->expire,version,extend);
+    encoded = rocksEncodeMetaVal(d->swap_type,d->expire, version, extend);
     sdsfree(extend);
     return encoded;
 }
@@ -323,7 +319,7 @@ int swapDataSetupMeta(swapData *d, int object_type, long long expire,
     serverAssert(d->type == NULL);
 
     d->expire = expire;
-    d->object_type = object_type;
+    d->swap_type = object_type;
 
     if (!swapDataMarkedPropagateExpire(d) &&
             swapDataExpiredAndShouldDelete(d)) {
@@ -332,20 +328,20 @@ int swapDataSetupMeta(swapData *d, int object_type, long long expire,
 
     if (datactx) *datactx = NULL;
 
-    switch (d->object_type) {
-    case OBJ_STRING:
+    switch (d->swap_type) {
+    case SWAP_STRING:
         retval = swapDataSetupWholeKey(d,datactx);
         break;
-    case OBJ_HASH:
+    case SWAP_HASH:
         retval = swapDataSetupHash(d,datactx);
         break;
-    case OBJ_SET:
+    case SWAP_SET:
         retval = swapDataSetupSet(d,datactx);
         break;
-    case OBJ_ZSET:
+    case SWAP_ZSET:
         retval = swapDataSetupZSet(d, datactx);
         break;
-    case OBJ_LIST:
+    case SWAP_LIST:
         retval = swapDataSetupList(d, datactx);
         break;
     case OBJ_STREAM:

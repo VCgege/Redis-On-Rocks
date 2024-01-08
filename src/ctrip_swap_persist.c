@@ -456,27 +456,29 @@ int keyLoadFixDataInit(keyLoadFixData *fix, redisDb *db, decodedResult *dr) {
         return INIT_FIX_SKIP;
     }
 
-    objectMeta *cold_meta, *rebuild_meta;
+    objectMeta *cold_meta, *rebuild_meta, *om;
     decodedMeta *dm = (decodedMeta*)dr;
 
     size_t extlen = dm->extend ? sdslen(dm->extend) : 0;
-    if (buildObjectMeta(dm->object_type,dm->version,dm->extend,
-                extlen, &cold_meta)) {
+    if (buildObjectMeta(dm->swap_type, dm->version, dm->extend,
+                        extlen, &cold_meta)) {
         return INIT_FIX_ERR;
     }
 
 
-    switch (dm->object_type) {
-    case OBJ_STRING:
+    switch (dm->swap_type) {
+    case SWAP_STRING:
         rebuild_meta = NULL;
         break;
-    case OBJ_HASH:
-    case OBJ_SET:
-    case OBJ_ZSET:
-        rebuild_meta = createLenObjectMeta(dm->object_type,dm->version,0);
+    case SWAP_HASH:
+    case SWAP_SET:
+    case SWAP_ZSET:
+        om = createObjectMeta(SWAP_ZSET,dm->version);
+        rebuild_meta = createLenObjectMeta(om,0);
         break;
-    case OBJ_LIST:
-        rebuild_meta = createListObjectMeta(dm->version,listMetaCreate());
+    case SWAP_LIST:
+        om = createObjectMeta(SWAP_LIST,dm->version);
+        rebuild_meta = createListObjectMeta(om,listMetaCreate());
         break;
     default:
         rebuild_meta = NULL;
@@ -484,7 +486,7 @@ int keyLoadFixDataInit(keyLoadFixData *fix, redisDb *db, decodedResult *dr) {
     }
 
     fix->db = db;
-    fix->object_type = dm->object_type;
+    fix->swap_type = dm->swap_type;
     fix->key = createStringObject(dr->key, sdslen(dr->key));
     fix->expire = dm->expire;
     fix->version = dm->version;
@@ -574,7 +576,7 @@ static int keyLoadFixAna(struct keyLoadFixData *fix) {
     if (rebuild_meta == NULL || cold_meta == NULL)
         return FIX_DELETE;
 
-    if (rebuild_meta->object_type != cold_meta->object_type ||
+    if (rebuild_meta->swap_type != cold_meta->swap_type ||
             rebuild_meta->version != cold_meta->version)
         return FIX_DELETE;
 
@@ -619,8 +621,8 @@ static inline int keyLoadFixEnd(struct keyLoadFixData *fix,
         cfs[0] = META_CF;
         rawkeys[0] = rocksEncodeMetaKey(fix->db,fix->key->ptr);
         extend = objectMetaEncode(fix->rebuild_meta);
-        rawvals[0] = rocksEncodeMetaVal(fix->object_type,fix->expire,
-                fix->version,extend);
+        rawvals[0] = rocksEncodeMetaVal(fix->swap_type, fix->expire,
+                                        fix->version, extend);
         RIOInitPut(rio,1,cfs,rawkeys,rawvals);
         RIODo(rio);
         if (!RIOGetError(rio)) {
@@ -860,10 +862,10 @@ void ctripLoadDataFromDisk(void) {
 
 #ifdef REDIS_TEST
 
-#define PUT_META(redisdb,object_type,key_,version,expire,extend) do {\
+#define PUT_META(redisdb,swap_type,key_,version,expire,extend) do {\
     char *err = NULL;                                       \
     sds keysds = rocksEncodeMetaKey(redisdb, key_);         \
-    sds valsds = rocksEncodeMetaVal(object_type,expire,version,extend);\
+    sds valsds = rocksEncodeMetaVal(swap_type,expire,version,extend);\
     rocksdb_put_cf(server.rocks->db,server.rocks->wopts,    \
             server.rocks->cf_handles[META_CF],              \
             keysds,sdslen(keysds),valsds,sdslen(valsds),&err);\
@@ -895,7 +897,7 @@ void ctripLoadDataFromDisk(void) {
     sdsfree(keysds);                                        \
 } while (0)
 
-#define CHECK_META(redisdb,key,   object_type,version,expire,extend) do { \
+#define CHECK_META(redisdb,key,   swap_type,version,expire,extend) do { \
     char *err = NULL;                                       \
     size_t meta_rvlen;                                      \
     sds keysds = rocksEncodeMetaKey(redisdb, key);          \
@@ -912,7 +914,7 @@ void ctripLoadDataFromDisk(void) {
     size_t _extlen;                                         \
     rocksDecodeMetaVal(meta_rawval,meta_rvlen,&_obj_type,   \
             &_expire,&_version,&_extend,&_extlen);          \
-    test_assert(object_type == _obj_type);                  \
+    test_assert(swap_type == _obj_type);                  \
     test_assert(version == _version);                       \
     if (extend != NULL) {                                   \
         test_assert(sdslen(extend) == _extlen);             \

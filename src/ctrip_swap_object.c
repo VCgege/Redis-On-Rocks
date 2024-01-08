@@ -36,15 +36,15 @@
 static inline objectMetaType *getObjectMetaType(int object_type) {
     objectMetaType *omtype = NULL;
     switch (object_type) {
-    case OBJ_STRING:
+    case SWAP_STRING:
         omtype = NULL;
         break;
-    case OBJ_HASH:
-    case OBJ_SET:
-    case OBJ_ZSET:
+    case SWAP_HASH:
+    case SWAP_SET:
+    case SWAP_ZSET:
         omtype = &lenObjectMetaType;
         break;
-    case OBJ_LIST:
+    case SWAP_LIST:
         omtype = &listObjectMetaType;
         break;
     default:
@@ -56,7 +56,7 @@ static inline objectMetaType *getObjectMetaType(int object_type) {
 objectMeta *createObjectMeta(int object_type, uint64_t version) {
 	objectMeta *m = zmalloc(sizeof(objectMeta));
     m->version = version;
-    m->object_type = object_type;
+    m->swap_type = object_type;
     m->len = 0;
     return m;
 }
@@ -64,7 +64,7 @@ objectMeta *createObjectMeta(int object_type, uint64_t version) {
 void freeObjectMeta(objectMeta *object_meta) {
     objectMetaType *omtype;
     if (object_meta == NULL) return;
-    omtype = getObjectMetaType(object_meta->object_type);
+    omtype = getObjectMetaType(object_meta->swap_type);
     if (omtype != NULL && omtype->free) omtype->free(object_meta);
     zfree(object_meta);
 }
@@ -73,7 +73,7 @@ objectMeta *dupObjectMeta(objectMeta *object_meta) {
     objectMeta *dup_meta;
     objectMetaType *omtype;
     if (object_meta == NULL) return NULL;
-    omtype = getObjectMetaType(object_meta->object_type);
+    omtype = getObjectMetaType(object_meta->swap_type);
     dup_meta = zmalloc(sizeof(objectMeta));
     memcpy(dup_meta,object_meta,sizeof(objectMeta));
     if (omtype != NULL && omtype->duplicate) {
@@ -108,7 +108,7 @@ int buildObjectMeta(int object_type, uint64_t version, const char *extend,
 
 sds objectMetaEncode(struct objectMeta *object_meta) {
     serverAssert(object_meta);
-    objectMetaType *omtype = getObjectMetaType(object_meta->object_type);
+    objectMetaType *omtype = getObjectMetaType(object_meta->swap_type);
     if (omtype->encodeObjectMeta) {
         return omtype->encodeObjectMeta(object_meta,NULL);
     } else {
@@ -118,7 +118,7 @@ sds objectMetaEncode(struct objectMeta *object_meta) {
 
 int objectMetaDecode(struct objectMeta *object_meta, const char *extend, size_t extlen) {
     serverAssert(object_meta);
-    objectMetaType *omtype = getObjectMetaType(object_meta->object_type);
+    objectMetaType *omtype = getObjectMetaType(object_meta->swap_type);
     if (omtype->decodeObjectMeta) {
         return omtype->decodeObjectMeta(object_meta,extend,extlen);
     } else {
@@ -127,8 +127,8 @@ int objectMetaDecode(struct objectMeta *object_meta, const char *extend, size_t 
 }
 
 int objectMetaEqual(struct objectMeta *oma, struct objectMeta *omb) {
-    objectMetaType *typea = getObjectMetaType(oma->object_type);
-    objectMetaType *typeb = getObjectMetaType(omb->object_type);
+    objectMetaType *typea = getObjectMetaType(oma->swap_type);
+    objectMetaType *typeb = getObjectMetaType(omb->swap_type);
     if (oma->version != omb->version || typea != typeb) return 0;
     if (typea->equal)
         return typea->equal(oma,omb);
@@ -138,7 +138,7 @@ int objectMetaEqual(struct objectMeta *oma, struct objectMeta *omb) {
 
 int objectMetaRebuildFeed(struct objectMeta *rebuild_meta, uint64_t version,
         const char *subkey, size_t sublen) {
-    objectMetaType *omtype = getObjectMetaType(rebuild_meta->object_type);
+    objectMetaType *omtype = getObjectMetaType(rebuild_meta->swap_type);
     if (omtype->rebuildFeed)
         return omtype->rebuildFeed(rebuild_meta,version,subkey,sublen);
     else
@@ -150,7 +150,7 @@ int keyIsHot(objectMeta *object_meta, robj *value) {
     objectMetaType *type;
     if (value == NULL) return 0;
     if (object_meta == NULL) return 1;
-    type = getObjectMetaType(object_meta->object_type);
+    type = getObjectMetaType(object_meta->swap_type);
     initStaticSwapObjectMeta(som,type,object_meta,value);
     return swapObjectMetaIsHot(&som);
 }
@@ -165,7 +165,7 @@ sds dumpObjectMeta(objectMeta *object_meta) {
         return result;
     }
 
-    objectMetaType *omtype = getObjectMetaType(object_meta->object_type);
+    objectMetaType *omtype = getObjectMetaType(object_meta->swap_type);
     result = sdscatprintf(result,"version=%lu,",object_meta->version);
     if (omtype == &lenObjectMetaType){
         result = sdscatprintf(result,"len=%ld",(long)object_meta->len);
@@ -181,10 +181,9 @@ sds dumpObjectMeta(objectMeta *object_meta) {
 
 /* lenObjectMeta, used by hash/set/zset */
 
-objectMeta *createLenObjectMeta(int object_type, uint64_t version, size_t len) {
-    objectMeta *m = createObjectMeta(object_type,version);
-	m->len = len;
-	return m;
+objectMeta *createLenObjectMeta(objectMeta *om, size_t len) {
+	om->len = len;
+	return om;
 }
 
 sds encodeLenObjectMeta(struct objectMeta *object_meta, void *aux) {

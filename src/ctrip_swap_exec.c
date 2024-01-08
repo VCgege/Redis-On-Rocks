@@ -382,7 +382,7 @@ static void swapRequestInIntentionDelEncodeKeys(swapRequest *req, RIO *rio,
         meta_rawkey = swapDataEncodeMetaKey(req->data);
     }
 
-    if (!merged_is_hot || req->data->object_type == OBJ_STRING) {
+    if (!merged_is_hot || req->data->swap_type == SWAP_STRING) {
         int *rio_cfs = NULL, rio_numkeys = 0;
         sds *rio_rawkeys = NULL, *rio_rawvals = NULL;
 
@@ -746,6 +746,10 @@ void swapExecBatchPreprocess(swapExecBatch *meta_batch) {
         req = meta_batch->reqs[i];
         sds rawval = rio->get.rawvals[i];
         if (rawval == NULL) {
+            if (req->intention == SWAP_IN && req->key_request->swap_type != SWAP_STRING) {
+                objectMeta *object_meta = createObjectMeta(req->key_request->swap_type, swapGetAndIncrVersion());
+                dbAddMeta(req->data->db, req->data->key,object_meta);
+            }
             /* No swap needed if meta not found. */
             swapRequestSetIntention(req,SWAP_NOP,0);
             swapRequestUpdateStatsSwapInNotFound(req);

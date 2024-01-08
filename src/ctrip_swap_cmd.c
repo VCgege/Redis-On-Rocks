@@ -644,23 +644,25 @@ int getKeyRequestsSinterstore(int dbid, struct redisCommand *cmd, robj **argv, i
 }
 
 /* Key */
-void getKeyRequestsSingleKey(getKeyRequestsResult *result,
+void getKeyRequestsSingleKey(getKeyRequestsResult *result, int swap_type,
         robj *key/*ref*/, int cmd_intention, int cmd_intention_flags, uint64_t cmd_flags, int dbid) {
     keyRequest *key_request;
     incrRefCount(key);
     key_request = getKeyRequestsAppendCommonResult(result,
             REQUEST_LEVEL_KEY,key,cmd_intention,cmd_intention_flags,cmd_flags, dbid);
     key_request->type = KEYREQUEST_TYPE_KEY;
+    key_request->swap_type = swap_type;
 }
 
 /* Segment */
-void getKeyRequestsAppendRangeResult(getKeyRequestsResult *result, int level,
+void getKeyRequestsAppendRangeResult(getKeyRequestsResult *result, int swap_type, int level,
         robj *key, int arg_rewrite0, int arg_rewrite1, int num_ranges,
         range *ranges, int cmd_intention, int cmd_intention_flags, uint64_t cmd_flags, int dbid) {
     keyRequest *key_request = getKeyRequestsAppendCommonResult(result,level,
             key,cmd_intention,cmd_intention_flags,cmd_flags, dbid);
 
     key_request->type = KEYREQUEST_TYPE_RANGE;
+    key_request->swap_type = swap_type;
     key_request->l.num_ranges = num_ranges;
     key_request->l.ranges = ranges;
     key_request->list_arg_rewrite[0].arg_idx = arg_rewrite0;
@@ -670,7 +672,7 @@ void getKeyRequestsAppendRangeResult(getKeyRequestsResult *result, int level,
 /* There are no command with more that 2 ranges request. */
 #define GETKEYS_RESULT_SEGMENTS_MAX_LEN 2
 int _getKeyRequestsSingleKeyWithRangesGeneric(int dbid, int intention, int intention_flags, uint64_t cmd_flags,
-            robj *key, struct getKeyRequestsResult *result, int arg_rewrite0,
+            robj *key, struct getKeyRequestsResult *result, int swap_type, int arg_rewrite0,
             int arg_rewrite1, int num_ranges, va_list ap) {
 
     int i, capacity = GETKEYS_RESULT_SEGMENTS_MAX_LEN;
@@ -689,7 +691,7 @@ int _getKeyRequestsSingleKeyWithRangesGeneric(int dbid, int intention, int inten
         ranges[i].end = end;
     }
 
-    getKeyRequestsAppendRangeResult(result,REQUEST_LEVEL_KEY,key,
+    getKeyRequestsAppendRangeResult(result, swap_type, REQUEST_LEVEL_KEY,key,
             arg_rewrite0,arg_rewrite1,num_ranges,ranges,intention,
             intention_flags, cmd_flags, dbid);
 
@@ -708,13 +710,13 @@ int getKeyRequestsSwapBlockedLmove(int dbid, int intention, int intention_flags,
 }
 
 int getKeyRequestsSingleKeyWithRanges(int dbid, struct redisCommand *cmd, robj **argv,
-         int argc, struct getKeyRequestsResult *result, int key_index,
+         int argc, struct getKeyRequestsResult *result, int swap_type, int key_index,
          int arg_rewrite0, int arg_rewrite1, int num_ranges, ...) {
     UNUSED(argc);
     va_list ap;
     va_start(ap, num_ranges);
     int code = _getKeyRequestsSingleKeyWithRangesGeneric(dbid, cmd->intention, cmd->intention_flags, cmd->flags,
-        argv[key_index], result, arg_rewrite0, arg_rewrite1, num_ranges, ap);
+        argv[key_index], result, swap_type, arg_rewrite0, arg_rewrite1, num_ranges, ap);
     va_end(ap);
     return code;
 }
@@ -729,7 +731,7 @@ int getKeyRequestsLpop(int dbid, struct redisCommand *cmd, robj **argv,
     }
 
     getKeyRequestsSingleKeyWithRanges(dbid,cmd,argv,argc,
-            result,1,-1,-1,1/*num_ranges*/,0,count);
+            result, SWAP_LIST,1,-1,-1,1/*num_ranges*/,0,count);
     return 0;
 
 }
@@ -753,7 +755,7 @@ int getKeyRequestsRpop(int dbid, struct redisCommand *cmd, robj **argv,
     }
 
     getKeyRequestsSingleKeyWithRanges(dbid,cmd,argv,argc,
-            result,1,-1,-1,1/*num_ranges*/,-count,-1);
+            result, SWAP_LIST, 1,-1,-1,1/*num_ranges*/,-count,-1);
     return 0;
 }
 
@@ -769,8 +771,8 @@ int getKeyRequestsBrpop(int dbid, struct redisCommand *cmd, robj **argv,
 int getKeyRequestsRpoplpush(int dbid, struct redisCommand *cmd, robj **argv,
         int argc, struct getKeyRequestsResult *result) {
     getKeyRequestsSingleKeyWithRanges(dbid,cmd,argv,argc,
-            result,1,-1,-1,1/*num_ranges*/,-1,-1); /* source */
-    getKeyRequestsSingleKey(result,argv[2],SWAP_IN,SWAP_IN_META,cmd->flags | CMD_SWAP_DATATYPE_KEYSPACE,dbid);
+            result,SWAP_LIST,1,-1,-1,1/*num_ranges*/,-1,-1); /* source */
+    getKeyRequestsSingleKey(result,SWAP_LIST,argv[2],SWAP_IN,SWAP_IN_META,cmd->flags | CMD_SWAP_DATATYPE_KEYSPACE,dbid);
     return 0;
 }
 
@@ -790,9 +792,9 @@ int getKeyRequestsLmove(int dbid, struct redisCommand *cmd, robj **argv,
     }
     /* source */
     getKeyRequestsSingleKeyWithRanges(dbid,cmd,argv,argc,
-            result,1,-1,-1,1/*num_ranges*/,start,end);
+            result,SWAP_LIST,1,-1,-1,1/*num_ranges*/,start,end);
     /* destination */
-    getKeyRequestsSingleKey(result,argv[2],SWAP_IN,SWAP_IN_META,cmd->flags,dbid);
+    getKeyRequestsSingleKey(result,SWAP_LIST,argv[2],SWAP_IN,SWAP_IN_META,cmd->flags,dbid);
     return 0;
 }
 

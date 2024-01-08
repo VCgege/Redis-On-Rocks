@@ -617,7 +617,7 @@ int swapUtilTest(int argc, char **argv, int accurate) {
         sds empty = sdsempty(), rocksKey, rocksVal;
         sds key = sdsnew("key1");
         sds EXT = sdsfromlonglong(666);
-        int dbId = 123456789, object_type;
+        int dbId = 123456789, swap_type;
         const char *keystr = NULL, *extend;
         size_t klen = 12345, extlen = 12345;
         uint64_t version, V = 0x12345678;
@@ -639,8 +639,8 @@ int swapUtilTest(int argc, char **argv, int accurate) {
 
         /* util - encode & decode meta val */
         rocksVal = rocksEncodeMetaVal(OBJ_HASH,EXP,V,EXT);
-        rocksDecodeMetaVal(rocksVal,sdslen(rocksVal),&object_type,&expire,&version,&extend,&extlen);
-        test_assert(object_type = OBJ_HASH);
+        rocksDecodeMetaVal(rocksVal,sdslen(rocksVal),&swap_type,&expire,&version,&extend,&extlen);
+        test_assert(swap_type = OBJ_HASH);
         test_assert(expire == EXP);
         test_assert(version == V);
         test_assert(extlen == sdslen(EXT) && memcmp(extend,EXT,extlen) == 0);

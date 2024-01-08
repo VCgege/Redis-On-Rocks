@@ -251,8 +251,10 @@ int hashSwapAna(swapData *data, int thd, struct keyRequest *req,
 
             /* create new meta if needed */
             if (!swapDataPersisted(data)) {
-                swapDataSetNewObjectMeta(data,
-                        createHashObjectMeta(swapGetAndIncrVersion(),0));
+                objectMeta *object_meta = lookupMeta(data->db, data->key);
+                serverAssert(object_meta != NULL);
+                objectMeta *new_meta = createHashObjectMeta(object_meta,0);
+                swapDataSetNewObjectMeta(data, new_meta);
             }
 
             if (noswap) {
@@ -513,16 +515,11 @@ int hashSwapDel(swapData *data, void *datactx_, int del_skip) {
     if (datactx->ctx.ctx_flag & BIG_DATA_CTX_FLAG_MOCK_VALUE) {
         createFakeHashForDeleteIfCold(data);
     }
-    if (del_skip) {
-        if (!swapDataIsCold(data))
-            dbDeleteMeta(data->db,data->key);
-        return 0;
-    } else {
-        if (!swapDataIsCold(data))
-            /* both value/object_meta/expire are deleted */
-            dbDelete(data->db,data->key);
-        return 0;
+    if (!del_skip && !swapDataIsCold(data)) {
+        /* both value/object_meta/expire are deleted */
+        dbDelete(data->db,data->key);
     }
+    return 0;
 }
 
 /* Decoded moved back by exec to hashSwapData */
@@ -780,7 +777,7 @@ void hashLoadStartZip(struct rdbKeyLoadData *load, rio *rdb, int *cf,
     extend = rocksEncodeObjectMetaLen(load->total_fields);
     *cf = META_CF;
     *rawkey = rocksEncodeMetaKey(load->db,load->key);
-    *rawval = rocksEncodeMetaVal(load->object_type,load->expire,load->version,extend);
+    *rawval = rocksEncodeMetaVal(load->swap_type, load->expire, load->version, extend);
     sdsfree(extend);
 }
 
@@ -889,7 +886,7 @@ rdbKeyLoadType hashLoadType = {
 void hashLoadInit(rdbKeyLoadData *load) {
     load->type = &hashLoadType;
     load->omtype = &hashObjectMetaType;
-    load->object_type = OBJ_HASH;
+    load->swap_type = SWAP_HASH;
 }
 
 #ifdef REDIS_TEST
@@ -1142,7 +1139,7 @@ int swapDataHashTest(int argc, char **argv, int accurate) {
         cont = hashLoad(load,&sdsrdb,&cf,&subkey,&subraw,&err);
         test_assert(cf == DATA_CF && cont == 0 && err == 0);
         test_assert(load->loaded_fields == 2);
-        test_assert(load->object_type == OBJ_HASH);
+        test_assert(load->swap_type == OBJ_HASH);
         sdsfree(subkey), sdsfree(subraw);
 
         sds coldraw,warmraw,hotraw;
@@ -1160,7 +1157,7 @@ int swapDataHashTest(int argc, char **argv, int accurate) {
         decoded_meta->version = Vcur;
         decoded_meta->extend = extend;
         decoded_meta->key = myhash_key;
-        decoded_meta->object_type = OBJ_HASH;
+        decoded_meta->swap_type = OBJ_HASH;
 
         rioInitWithBuffer(&rdbcold,sdsempty());
 

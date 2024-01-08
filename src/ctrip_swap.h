@@ -85,7 +85,7 @@ extern const char *swap_cf_names[CF_COUNT];
 /* --- swap intention flags --- */
 /* Delete rocksdb data key when swap in */
 #define SWAP_EXEC_IN_DEL (1U<<0)
-/* object meta will be deleted from db.meta */
+/* object meta will be kept in db.meta */
 #define SWAP_EXEC_FORCE_HOT (1U<<1)
 /* check whether oom would happend during RIO */
 #define SWAP_EXEC_OOM_CHECK (1U<<2)
@@ -102,6 +102,12 @@ extern const char *swap_cf_names[CF_COUNT];
 #define SWAP_DEL    3
 #define SWAP_UTILS  4
 #define SWAP_TYPES  5
+
+#define SWAP_STRING 0    /* String object. */
+#define SWAP_LIST 1      /* List object. */
+#define SWAP_SET 2       /* Set object. */
+#define SWAP_ZSET 3      /* Sorted set object. */
+#define SWAP_HASH 4      /* Hash object. */
 
 static inline const char *swapIntentionName(int intention) {
   const char *name = "?";
@@ -179,6 +185,7 @@ typedef struct keyRequest{
   int cmd_intention_flags;
   uint64_t cmd_flags;
   int type;
+  int swap_type;
   int deferred;
   robj *key;
   union {
@@ -298,7 +305,7 @@ void getKeyRequestsAppendSubkeyResult(getKeyRequestsResult *result, int level, M
 void getKeyRequestsFreeResult(getKeyRequestsResult *result);
 void getKeyRequestsAttachSwapTrace(getKeyRequestsResult * result, swapCmdTrace *swap_cmd, int from_include, int to_exclude);
 
-void getKeyRequestsAppendRangeResult(getKeyRequestsResult *result, int level, MOVE robj *key, int arg_rewrite0, int arg_rewrite1, int num_ranges, MOVE range *ranges, int cmd_intention, int cmd_intention_flags, uint64_t cmd_flags, int dbid);
+void getKeyRequestsAppendRangeResult(getKeyRequestsResult *result, int swap_type, int level, MOVE robj *key, int arg_rewrite0, int arg_rewrite1, int num_ranges, MOVE range *ranges, int cmd_intention, int cmd_intention_flags, uint64_t cmd_flags, int dbid);
 
 
 #define SWAP_PERSIST_VERSION_NO      0
@@ -481,7 +488,7 @@ typedef struct objectMetaType {
 
 typedef struct objectMeta {
   uint64_t version;
-  unsigned object_type:4;
+  unsigned swap_type:4;
   union {
     long long len:60;
     unsigned long long ptr:60;
@@ -514,7 +521,7 @@ static inline void objectMetaSetPtr(objectMeta *object_meta, void *ptr) {
 
 objectMeta *createObjectMeta(int object_type, uint64_t version);
 
-objectMeta *createLenObjectMeta(int object_type, uint64_t version, size_t len);
+objectMeta *createLenObjectMeta(objectMeta *om, size_t len);
 sds encodeLenObjectMeta(struct objectMeta *object_meta, void *aux);
 int decodeLenObjectMeta(struct objectMeta *object_meta, const char *extend, size_t extlen);
 int lenObjectMetaIsHot(struct objectMeta *object_meta, robj *value);
@@ -539,7 +546,7 @@ typedef struct swapObjectMeta {
 static inline int swapObjectMetaIsHot(swapObjectMeta *som) {
     if (som->value == NULL) return 0;
     if (som->object_meta == NULL) return 1;
-    serverAssert(som->object_meta->object_type == som->value->type);
+    serverAssert(som->object_meta->swap_type == som->value->type);
     if (som->omtype->objectIsHot) {
       return som->omtype->objectIsHot(som->object_meta,som->value);
     } else {
@@ -572,7 +579,7 @@ typedef struct swapData {
   objectMeta *object_meta; /* ref */
   objectMeta *cold_meta; /* own, moved from exec */
   objectMeta *new_meta; /* own */
-  int object_type;
+  int swap_type;
   unsigned propagate_expire:1;
   unsigned set_dirty:1;
   unsigned set_dirty_meta:1;
@@ -827,7 +834,7 @@ typedef struct hashDataCtx {
 int swapDataSetupHash(swapData *d, OUT void **datactx);
 
 #define hashObjectMetaType lenObjectMetaType
-#define createHashObjectMeta(version, len) createLenObjectMeta(OBJ_HASH, version, len)
+#define createHashObjectMeta(object_meta, len) createLenObjectMeta(object_meta, len)
 
 /* Set */
 typedef struct setSwapData {
@@ -841,7 +848,7 @@ typedef struct setDataCtx {
 int swapDataSetupSet(swapData *d, OUT void **datactx);
 
 #define setObjectMetaType lenObjectMetaType
-#define createSetObjectMeta(version, len) createLenObjectMeta(OBJ_SET, version, len)
+#define createSetObjectMeta(object_meta, len) createLenObjectMeta(object_meta, len)
 
 /* List */
 typedef struct listSwapData {
@@ -854,7 +861,7 @@ typedef struct listDataCtx {
   int ctx_flag;
 } listDataCtx;
 
-objectMeta *createListObjectMeta(uint64_t version, MOVE struct listMeta *list_meta);
+objectMeta *createListObjectMeta(objectMeta *object_meta, MOVE struct listMeta *list_meta);
 int swapDataSetupList(swapData *d, void **pdatactx);
 
 typedef struct argRewrite {
@@ -899,7 +906,7 @@ typedef struct zsetDataCtx {
 
 } zsetDataCtx;
 int swapDataSetupZSet(swapData *d, OUT void **datactx);
-#define createZsetObjectMeta(version, len) createLenObjectMeta(OBJ_ZSET, version, len)
+#define createZsetObjectMeta(object_meta, len) createLenObjectMeta(object_meta, len)
 #define zsetObjectMetaType lenObjectMetaType
 
 
@@ -909,7 +916,7 @@ int swapDataSetupZSet(swapData *d, OUT void **datactx);
 typedef struct scanMeta {
   sds key;
   long long expire;
-  int object_type;
+  int swap_type;
 } scanMeta;
 
 int scanMetaExpireIfNeeded(redisDb *db, scanMeta *meta);
@@ -1982,7 +1989,7 @@ typedef struct decodedMeta {
   int dbid;
   sds key;
   uint64_t version;
-  int object_type;
+  int swap_type;
   long long expire;
   sds extend;
 } decodedMeta;
@@ -2090,7 +2097,7 @@ typedef struct rdbKeyLoadData {
     long long now;
     uint64_t version;
     int rdbtype;
-    int object_type;
+    int swap_type;
     int nfeeds;
     int total_fields;
     int loaded_fields;
@@ -2130,7 +2137,7 @@ int rdbLoadLenVerbatim(rio *rdb, sds *verbatim, int *isencoded, unsigned long lo
 /* persist load fix */
 typedef struct keyLoadFixData {
   redisDb *db;
-  int object_type;
+  int swap_type;
   robj *key;
   long long expire;
   uint64_t version;

@@ -32,14 +32,14 @@
 void scanMetaInit(scanMeta *meta, int object_type, sds key, long long expire) {
     meta->key = key;
     meta->expire = expire;
-    meta->object_type = object_type;
+    meta->swap_type = object_type;
 }
 
 void scanMetaDeinit(scanMeta *meta) {
     if (meta->key) sdsfree(meta->key);
     meta->key = NULL;
     meta->expire = -1;
-    meta->object_type = -1;
+    meta->swap_type = -1;
 }
 
 void metaScanResultMakeRoom(metaScanResult *result, int num) {
@@ -789,7 +789,7 @@ int metaScanTest(int argc, char *argv[], int accurate) {
         result = (metaScanResult*)decoded;
         test_assert(result->num == onumkeys);
         test_assert(result->metas[0].expire == -1);
-        test_assert(result->metas[0].object_type == OBJ_HASH);
+        test_assert(result->metas[0].swap_type == OBJ_HASH);
         test_assert(!strcmp(result->metas[0].key,"0"));
         test_assert(!sdscmp(result->nextseek,lastkey));
         for (i = 0; i < onumkeys; i++) {

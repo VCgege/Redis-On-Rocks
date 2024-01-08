@@ -57,7 +57,7 @@ static sds getSwapObjectInfo(robj *o) {
 
 static sds getSwapMetaInfo(int object_type, long long expire,objectMeta *m) {
     if (object_type == -1) return sdsnew("<nil>");
-    sds info = sdscatprintf(sdsempty(),"object_type=%d,expire=%lld",
+    sds info = sdscatprintf(sdsempty(),"swap_type=%d,expire=%lld",
             object_type,expire);
     if (m) {
         sds omdump = dumpObjectMeta(m);
@@ -140,7 +140,7 @@ NULL
         objectMeta *hot_meta = lookupMeta(db,key), *cold_meta = NULL;
         long long hot_expire = getExpire(db,key), cold_expire = -1;
         sds meta_rawkey = NULL, meta_rawval = NULL;
-        int hot_object_type = hot_meta ? hot_meta->object_type : -1;
+        int hot_object_type = hot_meta ? hot_meta->swap_type : -1;
         uint64_t cold_version;
         int cold_object_type = -1;
 

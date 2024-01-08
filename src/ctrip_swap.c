@@ -410,6 +410,10 @@ void keyRequestProceed(void *lock, int flush, redisDb *db, robj *key,
                 reason_num = NOSWAP_REASON_FILT_BY_CUCKOOFILTER;
             else
                 reason_num = NOSWAP_REASON_FILT_BY_ABSENTCACHE;
+            if (cmd_intention == SWAP_IN && ctx->key_request->swap_type != SWAP_STRING) {
+                objectMeta *om = createObjectMeta(ctx->key_request->swap_type, swapGetAndIncrVersion());
+                dbAddMeta(data->db,data->key,om);
+            }
             goto noswap;
         } else {
             req = swapMetaRequestNew(ctx->key_request,
@@ -422,7 +426,9 @@ void keyRequestProceed(void *lock, int flush, redisDb *db, robj *key,
 
     expire = getExpire(db,key);
 
-    retval = swapDataSetupMeta(data,value->type,expire,&datactx);
+    object_meta = lookupMeta(db,key);
+    serverAssert(object_meta != NULL);
+    retval = swapDataSetupMeta(data, object_meta->swap_type, expire, &datactx);
     swapCtxSetSwapData(ctx,data,datactx);
     if (retval) {
         if (retval == SWAP_ERR_SETUP_UNSUPPORTED) {
@@ -436,7 +442,6 @@ void keyRequestProceed(void *lock, int flush, redisDb *db, robj *key,
         goto noswap;
     }
 
-    object_meta = lookupMeta(db,key);
     swapDataSetObjectMeta(data,object_meta);
 
 allset:

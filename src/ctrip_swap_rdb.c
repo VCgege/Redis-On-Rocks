@@ -194,20 +194,20 @@ static int rdbKeySaveDataInitWarm(rdbKeySaveData *save, redisDb *db,
 
     rdbKeySaveDataInitCommon(save,key,value,expire,object_meta);
 
-    switch (value->type) {
-    case OBJ_STRING:
+    switch (save->object_meta->swap_type) {
+    case SWAP_STRING:
         wholeKeySaveInit(save);
         break;
-    case OBJ_HASH:
+    case SWAP_HASH:
         hashSaveInit(save,SWAP_VERSION_ZERO,NULL,0);
         break;
-    case OBJ_SET:
+    case SWAP_SET:
         setSaveInit(save,SWAP_VERSION_ZERO,NULL,0);
         break;
-    case OBJ_LIST:
+    case SWAP_LIST:
         listSaveInit(save,SWAP_VERSION_ZERO,NULL,0);
         break;
-    case OBJ_ZSET:
+    case SWAP_ZSET:
         zsetSaveInit(save,SWAP_VERSION_ZERO,NULL,0);
         break;
     default:
@@ -225,24 +225,24 @@ static int rdbKeySaveDataInitCold(rdbKeySaveData *save, redisDb *db,
 
     rdbKeySaveDataInitCommon(save,key,NULL,dm->expire,NULL);
 
-    switch (dm->object_type) {
-    case OBJ_STRING:
+    switch (dm->swap_type) {
+    case SWAP_STRING:
         serverAssert(dm->extend == NULL);
         wholeKeySaveInit(save);
         break;
-    case OBJ_HASH:
+    case SWAP_HASH:
         serverAssert(dm->extend != NULL);
         retval = hashSaveInit(save,dm->version,dm->extend,sdslen(dm->extend));
         break;
-    case OBJ_SET:
+    case SWAP_SET:
         serverAssert(dm->extend != NULL);
         retval = setSaveInit(save,dm->version,dm->extend,sdslen(dm->extend));
         break;
-    case OBJ_LIST:
+    case SWAP_LIST:
         serverAssert(dm->extend != NULL);
         retval = listSaveInit(save,dm->version,dm->extend,sdslen(dm->extend));
         break;
-    case OBJ_ZSET:
+    case SWAP_ZSET:
         serverAssert(dm->extend != NULL);
         retval = zsetSaveInit(save,dm->version,dm->extend,sdslen(dm->extend));
         break;
@@ -664,7 +664,7 @@ void rdbLoadStartLenMeta(struct rdbKeyLoadData *load, rio *rdb, int *cf,
 
     *cf = META_CF;
     *rawkey = rocksEncodeMetaKey(load->db,load->key);
-    *rawval = rocksEncodeMetaVal(load->object_type,load->expire,load->version,extend);
+    *rawval = rocksEncodeMetaVal(load->swap_type, load->expire, load->version, extend);
     *error = 0;
 
     sdsfree(extend);
@@ -957,7 +957,7 @@ int swapRdbTest(int argc, char *argv[], int accurate) {
         retval = ctripRdbLoadObject(rdbtype,&sdsrdb,db,mystring_key,-1,NOW,load);
         test_assert(!retval);
         test_assert(load->rdbtype == RDB_TYPE_STRING);
-        test_assert(load->object_type == OBJ_STRING);
+        test_assert(load->swap_type == OBJ_STRING);
         test_assert(load->nfeeds == 2);
     }
 
@@ -973,7 +973,7 @@ int swapRdbTest(int argc, char *argv[], int accurate) {
         retval = ctripRdbLoadObject(rdbtype,&sdsrdb,db,myhash_key,-1,NOW,load);
         test_assert(!retval);
         test_assert(load->rdbtype == RDB_TYPE_HASH);
-        test_assert(load->object_type == OBJ_HASH);
+        test_assert(load->swap_type == OBJ_HASH);
         test_assert(load->nfeeds == 4);
     }
 

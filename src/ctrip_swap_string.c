@@ -318,7 +318,7 @@ void wholekeyLoadStart(struct rdbKeyLoadData *keydata, rio *rdb, int *cf,
     UNUSED(rdb);
     *cf = META_CF;
     *rawkey = rocksEncodeMetaKey(keydata->db,keydata->key);
-    *rawval = rocksEncodeMetaVal(keydata->object_type,keydata->expire,SWAP_VERSION_ZERO,NULL);
+    *rawval = rocksEncodeMetaVal(keydata->swap_type, keydata->expire, SWAP_VERSION_ZERO, NULL);
     *error = 0;
 }
 
@@ -353,7 +353,7 @@ rdbKeyLoadType wholekeyLoadType = {
 void wholeKeyLoadInit(rdbKeyLoadData *keydata) {
     keydata->type = &wholekeyLoadType;
     keydata->omtype = &wholekeyObjectMetaType;
-    keydata->object_type = OBJ_STRING;
+    keydata->swap_type = SWAP_STRING;
 }
 
 
