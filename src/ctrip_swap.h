@@ -160,9 +160,9 @@ static inline const char *requestLevelName(int level) {
 
 /* Both start and end are inclusive, see addListRangeReply for details. */
 typedef struct range {
-    int type; /* LIST_RANGE, BITMAP_BIT_RANGE, BITMAP_BYTE_RANGE*/
     long long start;
     long long end;
+    int type; /* LIST_RANGE, BITMAP_BIT_RANGE, BITMAP_BYTE_RANGE*/
 } range;
 
 #define KEYREQUEST_TYPE_KEY    0

@@ -288,6 +288,7 @@ static inline void deltaBitmapFree(deltaBitmap *delta_bm)
 
 static inline robj *deltaBitmapTransToBitmapObject(deltaBitmap *delta_bm)
 {
+    //TODO memcpy比sdscatsds快
     sds bitmap = sdsnewlen("", 0);
     for (int i = 0; i < delta_bm->subkey_intervals_num; i++) {
         bitmap = sdscatsds(bitmap, delta_bm->subval_intervals[i]);
@@ -296,6 +297,8 @@ static inline robj *deltaBitmapTransToBitmapObject(deltaBitmap *delta_bm)
     sdsfree(bitmap);
     return res;
 }
+
+// metaBitmapMerge(metaBitmap *meta_bitmap, deltaBitmap *delta_bitmap)
 
 robj *deltaBitmapMergeIntoOldBitmapObject(deltaBitmap *delta_bm, robj *old_bitmap_object, bitmapMeta *meta)
 {
@@ -330,7 +333,7 @@ robj *deltaBitmapMergeIntoOldBitmapObject(deltaBitmap *delta_bm, robj *old_bitma
     }
 
     robj *res = createStringObject(new_bitmap, sdslen(new_bitmap));
-    sdsfree(new_bitmap);
+    sdsfree(new_bitmap); //OPT 太浪费性能，不要free，move到res
     return res;
 }
 
@@ -770,7 +773,7 @@ int bitmapDecodeData(swapData *data, int num, int *cfs, sds *rawkeys,
     UNUSED(cfs);
 
     deltaBitmap *delta_bm = deltaBitmapCreate();
-    delta_bm->subval_intervals = sds_malloc(sizeof(subkeyInterval) * num);
+    delta_bm->subval_intervals = sds_malloc(sizeof(subkeyInterval) * num); //BUG: 内存错误，为什么是sds_malloc?
     delta_bm->subkeys_logic_idx = zmalloc(num * sizeof(int));
     delta_bm->subkey_intervals = zmalloc(num * sizeof(subkeyInterval));
 
@@ -795,6 +798,7 @@ int bitmapDecodeData(swapData *data, int num, int *cfs, sds *rawkeys,
 
         if (slen == strlen("foo")) {
             /* "foo" subkey */
+            // CONFIRM 为什么能decode到foo？
             continue;
         }
         if (rawvals[i] == NULL) {
@@ -817,7 +821,7 @@ int bitmapDecodeData(swapData *data, int num, int *cfs, sds *rawkeys,
             delta_bm->subkey_intervals[interval_cursor].end_index = subkey_idx;
         }
 
-        subvalobj = rocksDecodeValRdb(rawvals[i]);
+        subvalobj = rocksDecodeValRdb(rawvals[i]); // CONFIRM 是否有必要用rdb格式存val？
         serverAssert(subvalobj->type == OBJ_STRING);
         /* subvalobj might be shared integer, unshared it before
          * add to decoded. */
@@ -829,6 +833,7 @@ int bitmapDecodeData(swapData *data, int num, int *cfs, sds *rawkeys,
         if (delta_bm->subkey_intervals[interval_cursor].end_index == delta_bm->subkey_intervals[interval_cursor].start_index) {
             delta_bm->subval_intervals[interval_cursor] = sdsdup(subval);
         } else {
+            //OPT 单次alloc之后memcpy应该比sdscatsds快
             delta_bm->subval_intervals[interval_cursor] = sdscatsds(delta_bm->subval_intervals[interval_cursor], subval);
         }
         sdsfree(subval);
