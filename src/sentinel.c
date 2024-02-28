@@ -267,6 +267,7 @@ struct sentinelState {
     char *sentinel_auth_user;    /* Username for ACLs AUTH against other sentinel. */
     int resolve_hostnames;       /* Support use of hostnames, assuming DNS is well configured. */
     int announce_hostnames;      /* Announce hostnames instead of IPs when we have them. */
+    int need_flush_config;       /* Need to flush config to disk? */
 } sentinel;
 
 /* A script execution job. */
@@ -2853,7 +2854,6 @@ void sentinelProcessHelloMessage(char *hello, int hello_len) {
     uint64_t current_epoch, master_config_epoch;
     char **token = sdssplitlen(hello, hello_len, ",", 1, &numtokens);
     sentinelRedisInstance *si, *master;
-
     if (numtokens == 8) {
         /* Obtain a reference to the master this hello message is about */
         master = sentinelGetMasterByName(token[4]);
@@ -4382,7 +4382,7 @@ char *sentinelVoteLeader(sentinelRedisInstance *master, uint64_t req_epoch, char
         sdsfree(master->leader);
         master->leader = sdsnew(req_runid);
         master->leader_epoch = req_epoch;
-        sentinelFlushConfig();
+        sentinel.need_flush_config = 1;
         sentinelEvent(LL_WARNING,"+vote-for-leader",master,"%s %llu",
             master->leader, (unsigned long long) master->leader_epoch);
         /* If we did not voted for ourselves, set the master failover start
@@ -5063,6 +5063,9 @@ void sentinelHandleDictOfRedisInstances(dict *instances) {
             }
         }
     }
+    if (sentinel.need_flush_config) {
+        sentinelFlushConfig();
+    }
     if (switch_to_promoted)
         sentinelFailoverSwitchToPromotedSlave(switch_to_promoted);
     dictReleaseIterator(di);
@@ -5142,7 +5145,17 @@ int sentinelTest(int argc, char *argv[], int accurate) {
 
     TEST("test elect abort") {
         sentinelRedisInstance *ri = initSentinelRedisInstance4Test();
-        printf("failover_start_time = %lld\n", ri->failover_start_time); // 输出变量值
+        ri->flags |= SRI_O_DOWN;
+        ri->flags |= SRI_FAILOVER_IN_PROGRESS;
+        ri->failover_start_time = mstime() - SENTINEL_ELECTION_TIMEOUT - 1;
+        ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
+        sentinelFailoverWaitStart(ri);
+        serverAssert((ri->flags& SRI_ELECT_ABORT) != 0);
+        releaseSentinelRedisInstance(ri);
+    }
+
+    TEST("test remove abort") {
+        sentinelRedisInstance *ri = initSentinelRedisInstance4Test();
         ri->flags |= SRI_O_DOWN;
         ri->flags |= SRI_FAILOVER_IN_PROGRESS;
         ri->failover_start_time = mstime() - SENTINEL_ELECTION_TIMEOUT - 1;
@@ -5152,6 +5165,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         serverAssert((ri->flags& SRI_ELECT_ABORT) != 0);
         releaseSentinelRedisInstance(ri);
     }
+
     return 0;
 }
 #endif
