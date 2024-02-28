@@ -5152,5 +5152,6 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         serverAssert((ri->flags& SRI_ELECT_ABORT) != 0);
         releaseSentinelRedisInstance(ri);
     }
+    return 0;
 }
 #endif
