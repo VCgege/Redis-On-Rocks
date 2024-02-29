@@ -2923,8 +2923,6 @@ void sentinelProcessHelloMessage(char *hello, int hello_len) {
                 sentinelAddr *old_addr;
 
                 sentinelEvent(LL_WARNING,"+config-update-from",si,"%@");
-                serverLog(LL_WARNING,"master: %s, epoch: %lld, get: %lld", master->name, 
-                    (unsigned long long) master->config_epoch, (unsigned long long)master_config_epoch);
                 sentinelEvent(LL_WARNING,"+switch-master",
                     master,"%s %s %d %s %d",
                     master->name,
@@ -4540,20 +4538,29 @@ int sentinelSendSlaveOf(sentinelRedisInstance *ri, const sentinelAddr *addr) {
     retval = redisAsyncCommand(ri->link->cc,
         sentinelDiscardReplyCallback, ri, "%s",
         sentinelInstanceMapCommand(ri,"MULTI"));
-    if (retval == C_ERR) return retval;
+    if (retval == C_ERR) {
+        serverLog(LL_WARNING,"sentinelSendSlaveOf: err: MULTI");
+        return retval;
+    }
     ri->link->pending_commands++;
 
     retval = redisAsyncCommand(ri->link->cc,
         sentinelDiscardReplyCallback, ri, "%s %s %s",
         sentinelInstanceMapCommand(ri,"SLAVEOF"),
         host, portstr);
-    if (retval == C_ERR) return retval;
+    if (retval == C_ERR) {
+        serverLog(LL_WARNING,"sentinelSendSlaveOf: err: SLAVEOF");
+        return retval;
+    }
     ri->link->pending_commands++;
 
     retval = redisAsyncCommand(ri->link->cc,
         sentinelDiscardReplyCallback, ri, "%s REWRITE",
         sentinelInstanceMapCommand(ri,"CONFIG"));
-    if (retval == C_ERR) return retval;
+    if (retval == C_ERR) {
+        serverLog(LL_WARNING,"sentinelSendSlaveOf: err: CONFIG");
+        return retval;
+    }
     ri->link->pending_commands++;
 
     /* CLIENT KILL TYPE <type> is only supported starting from Redis 2.8.12,
@@ -4566,14 +4573,20 @@ int sentinelSendSlaveOf(sentinelRedisInstance *ri, const sentinelAddr *addr) {
             sentinelDiscardReplyCallback, ri, "%s KILL TYPE %s",
             sentinelInstanceMapCommand(ri,"CLIENT"),
             type == 0 ? "normal" : "pubsub");
-        if (retval == C_ERR) return retval;
+        if (retval == C_ERR) {
+            serverLog(LL_WARNING,"sentinelSendSlaveOf: err: CLIENT");
+            return retval;
+        }
         ri->link->pending_commands++;
     }
 
     retval = redisAsyncCommand(ri->link->cc,
         sentinelDiscardReplyCallback, ri, "%s",
         sentinelInstanceMapCommand(ri,"EXEC"));
-    if (retval == C_ERR) return retval;
+    if (retval == C_ERR) {
+        serverLog(LL_WARNING,"sentinelSendSlaveOf: err: EXEC");
+        return retval;
+    }
     ri->link->pending_commands++;
 
     return C_OK;
