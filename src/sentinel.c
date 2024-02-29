@@ -2923,6 +2923,8 @@ void sentinelProcessHelloMessage(char *hello, int hello_len) {
                 sentinelAddr *old_addr;
 
                 sentinelEvent(LL_WARNING,"+config-update-from",si,"%@");
+                serverLog(LL_WARNING,"master: %s, epoch: %lld, get: %lld", master->name, 
+                    (unsigned long long) master->config_epoch, (unsigned long long)master_config_epoch);
                 sentinelEvent(LL_WARNING,"+switch-master",
                     master,"%s %s %d %s %d",
                     master->name,
@@ -4382,7 +4384,7 @@ char *sentinelVoteLeader(sentinelRedisInstance *master, uint64_t req_epoch, char
         sdsfree(master->leader);
         master->leader = sdsnew(req_runid);
         master->leader_epoch = req_epoch;
-        sentinel.need_flush_config = 1;
+        sentinel.need_flush_config++;
         sentinelEvent(LL_WARNING,"+vote-for-leader",master,"%s %llu",
             master->leader, (unsigned long long) master->leader_epoch);
         /* If we did not voted for ourselves, set the master failover start
@@ -5102,6 +5104,7 @@ void sentinelCheckTiltCondition(void) {
 void sentinelCheckFlush(void) {
     if (sentinel.need_flush_config) {
         sentinelFlushConfig();
+        serverLog(LL_WARNING,"FlushConfig: flush config counter: %d", sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
     }
 }
