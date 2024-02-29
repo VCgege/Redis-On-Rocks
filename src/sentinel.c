@@ -5063,9 +5063,6 @@ void sentinelHandleDictOfRedisInstances(dict *instances) {
             }
         }
     }
-    if (sentinel.need_flush_config) {
-        sentinelFlushConfig();
-    }
     if (switch_to_promoted)
         sentinelFailoverSwitchToPromotedSlave(switch_to_promoted);
     dictReleaseIterator(di);
@@ -5102,9 +5099,17 @@ void sentinelCheckTiltCondition(void) {
     sentinel.previous_time = mstime();
 }
 
+void sentinelCheckFlush(void) {
+    if (sentinel.need_flush_config) {
+        sentinelFlushConfig();
+        sentinel.need_flush_config = 0;
+    }
+}
+
 void sentinelTimer(void) {
     sentinelCheckTiltCondition();
     sentinelHandleDictOfRedisInstances(sentinel.masters);
+    sentinelCheckFlush();
     sentinelRunPendingScripts();
     sentinelCollectTerminatedScripts();
     sentinelKillTimedoutScripts();
