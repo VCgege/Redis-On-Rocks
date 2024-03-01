@@ -5179,6 +5179,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->flags |= SRI_O_DOWN;
         ri->flags |= SRI_FAILOVER_IN_PROGRESS;
         ri->flags |= SRI_FORCE_FAILOVER;
+        ri->flags |= SRI_ELECT_ABORT;
         ri->failover_start_time = mstime();
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         sentinelFailoverWaitStart(ri);
