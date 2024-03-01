@@ -5162,20 +5162,24 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     robj* channel = createStringObject("test", sizeof("test"));
     list *clients = listCreate();
     initServer4Test();
+    dict *table = sentinel.masters;
     dictAdd(server.pubsub_channels,channel,clients);
-    sentinelRedisInstance *ri = initSentinelRedisInstance4Test();
+
 
     TEST("test elect abort") {
+        sentinelRedisInstance *ri = initSentinelRedisInstance4Test();
         ri->flags |= SRI_O_DOWN;
         ri->flags |= SRI_FAILOVER_IN_PROGRESS;
         ri->failover_start_time = mstime() - SENTINEL_ELECTION_TIMEOUT - 1;
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         sentinelFailoverWaitStart(ri);
         serverAssert((ri->flags& SRI_ELECT_ABORT) != 0);
-        
+        dictDelete(table,ri->name);
+        releaseSentinelRedisInstance(ri);
     }
 
     TEST("test remove abort") {
+        sentinelRedisInstance *ri = initSentinelRedisInstance4Test();
         ri->flags |= SRI_O_DOWN;
         ri->flags |= SRI_FAILOVER_IN_PROGRESS;
         ri->flags |= SRI_FORCE_FAILOVER;
@@ -5184,8 +5188,10 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         sentinelFailoverWaitStart(ri);
         serverAssert((ri->flags& SRI_ELECT_ABORT) == 0);
+        dictDelete(table,ri->name);
+        releaseSentinelRedisInstance(ri);
     }
-    releaseSentinelRedisInstance(ri);
+    
 
     return 0;
 }
