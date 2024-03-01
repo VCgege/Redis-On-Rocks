@@ -5189,7 +5189,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         uint64_t leader_epoch;
         char *myvote = NULL;
         ri->leader_epoch = 0;
-        ri->leader = "other";
+        ri->leader = sdsnew("other");
         printf("myid: %s", sentinel.myid);
         myvote = sentinelVoteLeader(ri, 1, sentinel.myid, &leader_epoch);
         serverAssert(strcmp(ri->leader, &sentinel.myid));
