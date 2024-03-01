@@ -5174,8 +5174,8 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         sentinelFailoverWaitStart(ri);
         serverAssert((ri->flags& SRI_ELECT_ABORT) != 0);
-        dictDelete(table,ri->name);
         releaseSentinelRedisInstance(ri);
+        dictDelete(table,ri->name);
     }
 
     TEST("test remove abort") {
@@ -5188,8 +5188,8 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         sentinelFailoverWaitStart(ri);
         serverAssert((ri->flags& SRI_ELECT_ABORT) == 0);
-        dictDelete(table,ri->name);
         releaseSentinelRedisInstance(ri);
+        dictDelete(table,ri->name);
     }
     
 
