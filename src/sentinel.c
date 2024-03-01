@@ -5171,7 +5171,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->failover_start_time = mstime() - SENTINEL_ELECTION_TIMEOUT - 1;
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         sentinelFailoverWaitStart(ri);
-        serverAssert((ri->flags& SRI_ELECT_ABORT) != 0);
+        serverAssert((ri->flags & SRI_ELECT_ABORT) != 0);
     }
 
     TEST("SRI_ELECT_ABORT: remove") {
@@ -5182,26 +5182,27 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->failover_start_time = mstime();
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         sentinelFailoverWaitStart(ri);
-        serverAssert((ri->flags& SRI_ELECT_ABORT) == 0);
+        serverAssert((ri->flags & SRI_ELECT_ABORT) == 0);
     }
 
     TEST("sentinelVoteLeader:") {
         uint64_t leader_epoch;
         char *myvote = NULL;
-        ri->master_epoch = 0;
+        ri->leader_epoch = 0;
         ri->leader = "other";
         printf("myid: %s", sentinel.myid);
         myvote = sentinelVoteLeader(ri, 1, sentinel.myid, &leader_epoch);
         serverAssert(strcmp(ri->master, sentinel.myid));
         serverAssert(strcmp(myvote, sentinel.myid));
-        serverAssert(ri->master_epoch == 1);
+        serverAssert(ri->leader_epoch == 1);
+        serverAssert(leader_epoch == 1);
 
         myvote = sentinelVoteLeader(ri, 0, "other", &leader_epoch);
         serverAssert(strcmp(ri->master, sentinel.myid));
         serverAssert(strcmp(myvote, sentinel.myid));
-        serverAssert(ri->master_epoch == 1);
+        serverAssert(ri->leader_epoch == 1);
+        serverAssert(leader_epoch == 1);
     }
-    
 
     return 0;
 }
