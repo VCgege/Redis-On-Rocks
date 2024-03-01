@@ -5162,24 +5162,19 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     robj* channel = createStringObject("test", sizeof("test"));
     list *clients = listCreate();
     initServer4Test();
-    dict *table = sentinel.masters;
     dictAdd(server.pubsub_channels,channel,clients);
+    sentinelRedisInstance *ri = initSentinelRedisInstance4Test();
 
-
-    TEST("test elect abort") {
-        sentinelRedisInstance *ri = initSentinelRedisInstance4Test();
+    TEST("SRI_ELECT_ABORT: add") {
         ri->flags |= SRI_O_DOWN;
         ri->flags |= SRI_FAILOVER_IN_PROGRESS;
         ri->failover_start_time = mstime() - SENTINEL_ELECTION_TIMEOUT - 1;
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         sentinelFailoverWaitStart(ri);
         serverAssert((ri->flags& SRI_ELECT_ABORT) != 0);
-        releaseSentinelRedisInstance(ri);
-        dictDelete(table,ri->name);
     }
 
-    TEST("test remove abort") {
-        sentinelRedisInstance *ri = initSentinelRedisInstance4Test();
+    TEST("SRI_ELECT_ABORT: remove") {
         ri->flags |= SRI_O_DOWN;
         ri->flags |= SRI_FAILOVER_IN_PROGRESS;
         ri->flags |= SRI_FORCE_FAILOVER;
@@ -5188,8 +5183,23 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         sentinelFailoverWaitStart(ri);
         serverAssert((ri->flags& SRI_ELECT_ABORT) == 0);
-        releaseSentinelRedisInstance(ri);
-        dictDelete(table,ri->name);
+    }
+
+    TEST("sentinelVoteLeader:") {
+        uint64_t leader_epoch;
+        char *myvote = NULL;
+        ri->master_epoch = 0;
+        ri->leader = "other";
+        printf("myid: %s", sentinel.myid);
+        myvote = sentinelVoteLeader(ri, 1, sentinel.myid, &leader_epoch);
+        serverAssert(strcmp(ri->master, sentinel.myid));
+        serverAssert(strcmp(myvote, sentinel.myid));
+        serverAssert(ri->master_epoch == 1);
+
+        myvote = sentinelVoteLeader(ri, 0, "other", &leader_epoch);
+        serverAssert(strcmp(ri->master, sentinel.myid));
+        serverAssert(strcmp(myvote, sentinel.myid));
+        serverAssert(ri->master_epoch == 1);
     }
     
 
