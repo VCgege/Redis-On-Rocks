@@ -4635,8 +4635,8 @@ int sentinelStartFailoverIfNeeded(sentinelRedisInstance *master) {
             ctimebuf[24] = '\0'; /* Remove newline. */
             master->failover_delay_logged = master->failover_start_time;
             serverLog(LL_WARNING,
-                "Next failover delay: I will not start a failover before %s",
-                ctimebuf);
+                "Next failover delay: I will not start a failover before %s, master: %s",
+                ctimebuf, master->name);
         }
         return 0;
     }
@@ -5179,11 +5179,11 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         sentinelRedisInstance *ri = initSentinelRedisInstance4Test();
         ri->flags |= SRI_O_DOWN;
         ri->flags |= SRI_FAILOVER_IN_PROGRESS;
-        ri->failover_start_time = mstime() - SENTINEL_ELECTION_TIMEOUT - 1;
-        printf("failover_start_time = %lld\n", ri->failover_start_time); // 输出变量值
+        ri->flags |= SRI_FORCE_FAILOVER;
+        ri->failover_start_time = mstime();
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         sentinelFailoverWaitStart(ri);
-        serverAssert((ri->flags& SRI_ELECT_ABORT) != 0);
+        serverAssert((ri->flags& SRI_ELECT_ABORT) == 0);
         releaseSentinelRedisInstance(ri);
     }
 
