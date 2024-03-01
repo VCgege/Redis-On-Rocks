@@ -5158,6 +5158,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     initServerConfig();
     initSentinelConfig();
     initSentinel();
+    getRandomHexChars(sentinel.myid, CONFIG_RUN_ID_SIZE);
 
     robj* channel = createStringObject("test", sizeof("test"));
     list *clients = listCreate();
