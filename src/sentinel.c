@@ -5204,7 +5204,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->flags &= ~SRI_ELECT_ABORT;
         ri->failover_start_time = mstime();
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT;
-        mstime_t old_delay_log = ri->failover_start_time - 1;
+        old_delay_log = ri->failover_start_time - 1;
         ri->failover_delay_logged = old_delay_log;
         sentinelStartFailoverIfNeeded(ri);
         serverAssert(ri->failover_delay_logged != old_delay_log);
