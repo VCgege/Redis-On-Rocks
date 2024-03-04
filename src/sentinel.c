@@ -5119,9 +5119,9 @@ void sentinelCheckTiltCondition(void) {
 
 void sentinelFlushConfigIfNeeded(void) {
     struct stat fileInfo;
-    printf("\nconfig: %s", server.configfile);
+    printf("config: %s\n", server.configfile);
     if (sentinel.need_flush_config) {
-        // sentinelFlushConfig();
+        sentinelFlushConfig();
         if (stat(server.configfile, &fileInfo) == -1) goto werr;
         serverLog(LL_WARNING, "FlushConfig: flush config counter: %d", sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
@@ -5235,10 +5235,17 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     }
 
     TEST("sentinelFlushConfigIfNeeded") {
-        
+        struct stat fileInfo;
+        if (stat(server.configfile, &fileInfo) == -1) goto werr;
+        mstime_t mtime = fileInfo.st_mtime; 
+        printf("mtime: %lld, previous: %lld\n", mtime, sentinel.previous_flush_time);
+
         sentinel.need_flush_config++;
+        if (stat(server.configfile, &fileInfo) == -1) goto werr;
         sentinelFlushConfigIfNeeded();
-        
+        serverAssert(mtime != fileInfo.st_mtime);
+
+        printf("\nmtime: %lld, previous: %lld", fileInfo.st_mtime, sentinel.previous_flush_time);
     }
 
     TEST("sentinelVoteLeader") {
