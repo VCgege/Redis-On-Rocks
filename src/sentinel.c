@@ -5246,12 +5246,14 @@ int sentinelTest(int argc, char *argv[], int accurate) {
             sentineli->leader = other_id;
             sentineli->leader_epoch = 3;
         }
-        // will be other 
+        // will be other, cos epoch 2 is old
         leader = sentinelGetLeader(ri, 2);
+        printf("\nleader: %s, other_id: %s", leader, other_id);
         serverAssert(ri->leader_epoch == 3);
         serverAssert(sdscmp(leader, other_id) != 0);
         // will be other
         leader = sentinelGetLeader(ri, 3);
+        printf("\nleader: %s, other_id: %s", leader, other_id);
         serverAssert(ri->leader_epoch == 3);
         serverAssert(sdscmp(leader, other_id) != 0);
     
