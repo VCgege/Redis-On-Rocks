@@ -5119,6 +5119,7 @@ void sentinelCheckTiltCondition(void) {
 
 void sentinelFlushConfigIfNeeded(void) {
     struct stat fileInfo;
+    printf("\nconfig: %s", server.configfile);
     if (sentinel.need_flush_config) {
         sentinelFlushConfig();
         if (stat(server.configfile, &fileInfo) == -1) goto werr;
@@ -5130,7 +5131,7 @@ void sentinelFlushConfigIfNeeded(void) {
     
     if (stat(server.configfile, &fileInfo) == -1) goto werr;
     mstime_t mtime = fileInfo.st_mtime; // 获取修改时间（单位为秒）
-    printf("mtime: %lld, previous: %lld", mtime, sentinel.previous_flush_time);
+    printf("\nmtime: %lld, previous: %lld", mtime, sentinel.previous_flush_time);
 
     if (mtime != sentinel.previous_flush_time) {
         sentinelFlushConfig();
