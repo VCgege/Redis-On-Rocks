@@ -5194,8 +5194,10 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->failover_start_time = mstime();
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT;
         ri->failover_delay_logged = ri->failover_start_time - 1 ;
+        printf("\nri->failover_delay_logged :%lld", ri->failover_delay_logged);
         sentinelStartFailoverIfNeeded(ri);
         serverAssert(ri->failover_delay_logged == (ri->failover_start_time - 1));
+        printf("\nri->failover_delay_logged :%lld", ri->failover_delay_logged);
     }
 
     TEST("sentinelVoteLeader") {
