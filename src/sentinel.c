@@ -5187,18 +5187,27 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     }
 
     TEST("sentinelStartFailoverIfNeeded") {
-        // not delay, with SRI_ELECT_ABORT ri->failover_delay_logged will not change
+        // not delay with SRI_ELECT_ABORT, ri->failover_delay_logged will not change
         ri->flags |= SRI_O_DOWN;
         ri->flags &= ~SRI_FAILOVER_IN_PROGRESS;
         ri->flags |= SRI_ELECT_ABORT;
         ri->failover_start_time = mstime();
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT;
-        ri->failover_delay_logged = ri->failover_start_time - 1 ;
-        printf("\nri->failover_delay_logged :%lld", ri->failover_delay_logged);
+        mstime_t old_delay_log = ri->failover_start_time - 1;
+        ri->failover_delay_logged = old_delay_log;
         sentinelStartFailoverIfNeeded(ri);
-        printf("\nri->failover_delay_logged :%lld", ri->failover_delay_logged);
-        serverAssert(ri->failover_delay_logged == (ri->failover_start_time - 1));
-        
+        serverAssert(ri->failover_delay_logged == old_delay_log);
+
+        // will delay without SRI_ELECT_ABORT
+        ri->flags |= SRI_O_DOWN;
+        ri->flags &= ~SRI_FAILOVER_IN_PROGRESS;
+        ri->flags &= ~SRI_ELECT_ABORT;
+        ri->failover_start_time = mstime();
+        ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT;
+        mstime_t old_delay_log = ri->failover_start_time - 1;
+        ri->failover_delay_logged = old_delay_log;
+        sentinelStartFailoverIfNeeded(ri);
+        serverAssert(ri->failover_delay_logged != old_delay_log);
     }
 
     TEST("sentinelVoteLeader") {
