@@ -5122,14 +5122,14 @@ void sentinelFlushConfigIfNeeded(void) {
     printf("config: %s\n", server.configfile);
     if (sentinel.need_flush_config) {
         sentinelFlushConfig();
-        if (fstat(server.configfile, &fileInfo) == -1) goto werr;
+        if (stat(server.configfile, &fileInfo) == -1) goto werr;
         serverLog(LL_WARNING, "FlushConfig: flush config counter: %d", sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
         sentinel.previous_flush_time = fileInfo.st_mtime;
         return;
     }
     
-    if (fstat(server.configfile, &fileInfo) == -1) goto werr;
+    if (stat(server.configfile, &fileInfo) == -1) goto werr;
     mstime_t mtime = fileInfo.st_mtime; // 获取修改时间（单位为秒）
     printf("\nmtime: %lld, previous: %lld", mtime, sentinel.previous_flush_time);
 
@@ -5236,12 +5236,12 @@ int sentinelTest(int argc, char *argv[], int accurate) {
 
     TEST("sentinelFlushConfigIfNeeded") {
         struct stat fileInfo;
-        if (fstat(server.configfile, &fileInfo) == -1) goto werr;
+        if (stat(server.configfile, &fileInfo) == -1) goto werr;
         mstime_t mtime = fileInfo.st_mtime; 
         printf("mtime: %lld, previous: %lld\n", mtime, sentinel.previous_flush_time);
 
         sentinel.need_flush_config++;
-        if (fstat(server.configfile, &fileInfo) == -1) goto werr;
+        if (stat(server.configfile, &fileInfo) == -1) goto werr;
         sentinelFlushConfigIfNeeded();
         serverAssert(mtime != fileInfo.st_mtime);
 
