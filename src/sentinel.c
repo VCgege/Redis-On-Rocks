@@ -5211,7 +5211,6 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     TEST("sentinelGetLeader") {
         dictIterator *di;
         dictEntry *de;
-        sds other_id = sdsnew("other");
 
         ri->quorum = 3;
         // add other sentinels
@@ -5224,7 +5223,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         sentinelStartFailover(ri);
 
         ri->leader_epoch = 1;
-        ri->leader = other_id;
+        ri->leader = "other";
         ri->failover_epoch = 2 ;
         di = dictGetIterator(ri->sentinels);
         while((de = dictNext(di)) != NULL) {
@@ -5238,24 +5237,24 @@ int sentinelTest(int argc, char *argv[], int accurate) {
 
         // start failover 2, new is 3 from other
         ri->leader_epoch = 3;
-        ri->leader = other_id;
+        ri->leader ="other";
         ri->failover_epoch = 2 ;
         di = dictGetIterator(ri->sentinels);
         while((de = dictNext(di)) != NULL) {
             sentinelRedisInstance *sentineli = dictGetVal(de);
-            sentineli->leader = other_id;
+            sentineli->leader = "other";
             sentineli->leader_epoch = 3;
         }
         // will be other, cos epoch 2 is old
         leader = sentinelGetLeader(ri, 2);
-        printf("\nleader: %s, other_id: %s", leader, other_id);
+        printf("\nleader: %s", leader);
         serverAssert(ri->leader_epoch == 3);
-        serverAssert(sdscmp(leader, other_id) != 0);
+        serverAssert(sdscmp(leader, "other") != 0);
         // will be other
         leader = sentinelGetLeader(ri, 3);
-        printf("\nleader: %s, other_id: %s", leader, other_id);
+        printf("\nleader: %s", leader);
         serverAssert(ri->leader_epoch == 3);
-        serverAssert(sdscmp(leader, other_id) != 0);
+        serverAssert(sdscmp(leader, "other";) != 0);
     
     }
     releaseSentinelRedisInstance(ri);
