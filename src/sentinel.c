@@ -5181,6 +5181,8 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     initSentinel();
     getRandomHexChars(sentinel.myid, CONFIG_RUN_ID_SIZE);
     FILE* temp_file = fopen("temp.conf", "w");
+    char* str = "user default on nopass ~* &* +@all\n"; 
+    fwrite(str, sizeof(char), strlen(str), temp_file);
     fclose(temp_file);
     server.configfile = "temp.conf";
 
