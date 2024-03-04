@@ -5189,24 +5189,23 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     TEST("sentinelVoteLeader:") {
         uint64_t leader_epoch;
         char *myvote = NULL;
-        sds myid = sdsnew(sentinel.myid);
-        ri->leader_epoch = 2;
-        ri->leader = myid;
-        //nothing to do
-        myvote = sentinelVoteLeader(ri, 1, "other", &leader_epoch);
-        printf("ri->leader: %s, myid: %s", ri->leader, myid);
-        printf("\nlen: %d, len: %d", sdslen(ri->leader), sdslen(myid));
-        printf("\nres: %d", sdscmp(ri->leader, myid));
-        serverAssert(sdscmp(ri->leader, myid));
-        serverAssert(sdscmp(myvote, myid));
-        serverAssert(ri->leader_epoch == 2);
-        serverAssert(leader_epoch == 2);
+        ri->leader_epoch = 0;
+        ri->leader = "other";
+        
+        // vote newer
+        myvote = sentinelVoteLeader(ri, 1, sentinel.myid, &leader_epoch);
+        // cmp == 0 when equal
+        serverAssert(sdscmp(ri->leader, sentinel.myid) != 0);
+        serverAssert(sdscmp(myvote, sentinel.myid) != 0);
+        serverAssert(ri->leader_epoch == 1);
+        serverAssert(leader_epoch == 1);
 
-        // myvote = sentinelVoteLeader(ri, 0, "other", &leader_epoch);
-        // serverAssert(sdscmp(ri->leader, myid));
-        // serverAssert(strcmp(myvote, myid));
-        // serverAssert(ri->leader_epoch == 1);
-        // serverAssert(leader_epoch == 1);
+        //nothing to do
+        myvote = sentinelVoteLeader(ri, 0, "other", &leader_epoch);
+        serverAssert(sdscmp(ri->leader, sentinel.myid) != 0);
+        serverAssert(sdscmp(myvote, sentinel.myid) != 0);
+        serverAssert(ri->leader_epoch == 1);
+        serverAssert(leader_epoch == 1);
     }
 
     releaseSentinelRedisInstance(ri);
