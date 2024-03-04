@@ -5190,7 +5190,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         uint64_t leader_epoch;
         char *myvote = NULL;
         ri->leader_epoch = 0;
-        ri->leader = "other";
+        ri->leader = sdsnew("other");
         
         // vote newer
         myvote = sentinelVoteLeader(ri, 1, sentinel.myid, &leader_epoch);
