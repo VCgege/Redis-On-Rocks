@@ -5186,7 +5186,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         serverAssert((ri->flags & SRI_ELECT_ABORT) == 0);
     }
 
-    TEST("sentinelVoteLeader:") {
+    TEST("sentinelVoteLeader") {
         uint64_t leader_epoch;
         char *myvote = NULL;
         ri->leader_epoch = 0;
@@ -5206,6 +5206,31 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         serverAssert(sdscmp(myvote, sentinel.myid) != 0);
         serverAssert(ri->leader_epoch == 1);
         serverAssert(leader_epoch == 1);
+    }
+
+    TEST("sentinelGetLeader") {
+        ri->quorum = 5;
+        // add other sentinels
+        sentinelRedisInstance *sentinel2 = createSentinelRedisInstance("sentinel2", SRI_SENTINEL, "192.168.0.2", 4950, ri->quorum, ri);
+        sentinelRedisInstance *sentinel3 = createSentinelRedisInstance("sentinel3", SRI_SENTINEL, "192.168.0.3", 4950, ri->quorum, ri);
+        sentinelRedisInstance *sentinel4 = createSentinelRedisInstance("sentinel4", SRI_SENTINEL, "192.168.0.4", 4950, ri->quorum, ri);
+        sentinelRedisInstance *sentinel5 = createSentinelRedisInstance("sentinel5", SRI_SENTINEL, "192.168.0.5", 4950, ri->quorum, ri);
+
+        // my failover
+        sentinelStartFailover(ri);
+        ri->failover_epoch = 2 ;
+        di = dictGetIterator(ri->sentinels);
+        while((de = dictNext(di)) != NULL) {
+            sentinelRedisInstance *sentineli = dictGetVal(de);
+            sentineli -> leader = sentinel.myid;
+            sentineli -> leader_epoch = 2;
+        }
+        char * leader = sentinelGetLeader(ri, 2);
+        printf("\nleader: %s", leader);
+        
+
+        // others win
+
     }
 
     releaseSentinelRedisInstance(ri);
