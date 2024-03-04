@@ -1145,8 +1145,8 @@ struct rewriteConfigState *rewriteConfigReadOldFile(char *path) {
     FILE *fp = fopen(path,"r");
     if (fp == NULL && errno != ENOENT) return NULL;
 
-    // char buf[CONFIG_MAX_LINE+1];
-    // int linenum = -1;
+    char buf[CONFIG_MAX_LINE+1];
+    int linenum = -1;
     struct rewriteConfigState *state = zmalloc(sizeof(*state));
     state->option_to_line = dictCreate(&optionToLineDictType,NULL);
     state->rewritten = dictCreate(&optionSetDictType,NULL);
@@ -1154,70 +1154,69 @@ struct rewriteConfigState *rewriteConfigReadOldFile(char *path) {
     state->lines = NULL;
     state->has_tail = 0;
     state->force_all = 0;
-    // Note: do not reload from disk to reduce time consumption
-    // if (fp == NULL) return state;
+    if (fp == NULL) return state;
 
-    // /* Read the old file line by line, populate the state. */
-    // while(fgets(buf,CONFIG_MAX_LINE+1,fp) != NULL) {
-    //     int argc;
-    //     sds *argv;
-    //     sds line = sdstrim(sdsnew(buf),"\r\n\t ");
+    /* Read the old file line by line, populate the state. */
+    while(fgets(buf,CONFIG_MAX_LINE+1,fp) != NULL) {
+        int argc;
+        sds *argv;
+        sds line = sdstrim(sdsnew(buf),"\r\n\t ");
 
-    //     linenum++; /* Zero based, so we init at -1 */
+        linenum++; /* Zero based, so we init at -1 */
 
-    //     /* Handle comments and empty lines. */
-    //     if (line[0] == '#' || line[0] == '\0') {
-    //         if (!state->has_tail && !strcmp(line,REDIS_CONFIG_REWRITE_SIGNATURE))
-    //             state->has_tail = 1;
-    //         rewriteConfigAppendLine(state,line);
-    //         continue;
-    //     }
+        /* Handle comments and empty lines. */
+        if (line[0] == '#' || line[0] == '\0') {
+            if (!state->has_tail && !strcmp(line,REDIS_CONFIG_REWRITE_SIGNATURE))
+                state->has_tail = 1;
+            rewriteConfigAppendLine(state,line);
+            continue;
+        }
 
-    //     /* Not a comment, split into arguments. */
-    //     argv = sdssplitargs(line,&argc);
+        /* Not a comment, split into arguments. */
+        argv = sdssplitargs(line,&argc);
 
-    //     if (argv == NULL) {
-    //         /* Apparently the line is unparsable for some reason, for
-    //          * instance it may have unbalanced quotes. Load it as a
-    //          * comment. */
-    //         sds aux = sdsnew("# ??? ");
-    //         aux = sdscatsds(aux,line);
-    //         sdsfree(line);
-    //         rewriteConfigAppendLine(state,aux);
-    //         continue;
-    //     }
+        if (argv == NULL) {
+            /* Apparently the line is unparsable for some reason, for
+             * instance it may have unbalanced quotes. Load it as a
+             * comment. */
+            sds aux = sdsnew("# ??? ");
+            aux = sdscatsds(aux,line);
+            sdsfree(line);
+            rewriteConfigAppendLine(state,aux);
+            continue;
+        }
 
-    //     sdstolower(argv[0]); /* We only want lowercase config directives. */
+        sdstolower(argv[0]); /* We only want lowercase config directives. */
 
-    //     /* Now we populate the state according to the content of this line.
-    //      * Append the line and populate the option -> line numbers map. */
-    //     rewriteConfigAppendLine(state,line);
+        /* Now we populate the state according to the content of this line.
+         * Append the line and populate the option -> line numbers map. */
+        rewriteConfigAppendLine(state,line);
 
-    //     /* Translate options using the word "slave" to the corresponding name
-    //      * "replica", before adding such option to the config name -> lines
-    //      * mapping. */
-    //     char *p = strstr(argv[0],"slave");
-    //     if (p) {
-    //         sds alt = sdsempty();
-    //         alt = sdscatlen(alt,argv[0],p-argv[0]);
-    //         alt = sdscatlen(alt,"replica",7);
-    //         alt = sdscatlen(alt,p+5,strlen(p+5));
-    //         sdsfree(argv[0]);
-    //         argv[0] = alt;
-    //     }
-    //     /* If this is sentinel config, we use sentinel "sentinel <config>" as option 
-    //         to avoid messing up the sequence. */
-    //     if (server.sentinel_mode && argc > 1 && !strcasecmp(argv[0],"sentinel")) {
-    //         sds sentinelOption = sdsempty();
-    //         sentinelOption = sdscatfmt(sentinelOption,"%S %S",argv[0],argv[1]);
-    //         rewriteConfigAddLineNumberToOption(state,sentinelOption,linenum);
-    //         sdsfree(sentinelOption);
-    //     } else {
-    //         rewriteConfigAddLineNumberToOption(state,argv[0],linenum);
-    //     }
-    //     sdsfreesplitres(argv,argc);
-    // }
-    // fclose(fp);
+        /* Translate options using the word "slave" to the corresponding name
+         * "replica", before adding such option to the config name -> lines
+         * mapping. */
+        char *p = strstr(argv[0],"slave");
+        if (p) {
+            sds alt = sdsempty();
+            alt = sdscatlen(alt,argv[0],p-argv[0]);
+            alt = sdscatlen(alt,"replica",7);
+            alt = sdscatlen(alt,p+5,strlen(p+5));
+            sdsfree(argv[0]);
+            argv[0] = alt;
+        }
+        /* If this is sentinel config, we use sentinel "sentinel <config>" as option 
+            to avoid messing up the sequence. */
+        if (server.sentinel_mode && argc > 1 && !strcasecmp(argv[0],"sentinel")) {
+            sds sentinelOption = sdsempty();
+            sentinelOption = sdscatfmt(sentinelOption,"%S %S",argv[0],argv[1]);
+            rewriteConfigAddLineNumberToOption(state,sentinelOption,linenum);
+            sdsfree(sentinelOption);
+        } else {
+            rewriteConfigAddLineNumberToOption(state,argv[0],linenum);
+        }
+        sdsfreesplitres(argv,argc);
+    }
+    fclose(fp);
     return state;
 }
 

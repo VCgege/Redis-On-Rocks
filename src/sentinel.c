@@ -268,6 +268,7 @@ struct sentinelState {
     int resolve_hostnames;       /* Support use of hostnames, assuming DNS is well configured. */
     int announce_hostnames;      /* Announce hostnames instead of IPs when we have them. */
     int need_flush_config;       /* Need to flush config to disk? */
+    mstime_t previous_flush_time;   /* Last time when flush config */
 } sentinel;
 
 /* A script execution job. */
@@ -4441,8 +4442,10 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
 
     voters = dictSize(master->sentinels)+1; /* All the other sentinels and me.*/
 
-    serverLog(LL_DEBUG,"helper: start vote master | master :%s, master epoch %llu, master->leader_epoch %llu",
-        master->name, (unsigned long long)epoch, (unsigned long long) master->leader_epoch);
+    serverLog(LL_DEBUG, 
+        "helper: master: %s | master epoch: %llu, master->leader_epoch: %llu",
+        master->name, (unsigned long long)epoch, 
+        (unsigned long long)master->leader_epoch);
 
     /* Count other sentinels votes */
     di = dictGetIterator(master->sentinels);
@@ -5114,18 +5117,36 @@ void sentinelCheckTiltCondition(void) {
     sentinel.previous_time = mstime();
 }
 
-void sentinelCheckFlush(void) {
+void sentinelFlushConfigIfNeeded(void) {
+    struct stat fileInfo;
     if (sentinel.need_flush_config) {
         sentinelFlushConfig();
-        serverLog(LL_WARNING,"FlushConfig: flush config counter: %d", sentinel.need_flush_config);
+        if (stat(server.configfile, &fileInfo) == -1) goto werr;
+        serverLog(LL_DEBUG, "FlushConfig: flush config counter: %d", sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
+        sentinel.previous_flush_time = fileInfo.st_mtime;
+        return;
     }
+    
+    if (stat(server.configfile, &fileInfo) == -1) goto werr;
+    mstime_t mtime = fileInfo.st_mtime; // 获取修改时间（单位为秒）
+    printf("mtime: %lld, previous: %lld", mtime, sentinel.previous_flush_time);
+
+    if (mtime != sentinel.previous_flush_time) {
+        sentinelFlushConfig();
+        sentinel.previous_flush_time = fileInfo.st_mtime;
+    }
+    return;
+
+werr:
+    serverLog(LL_WARNING,"WARNING: Sentinel was not able to save the new configuration on disk!!!: %s", strerror(errno));
+    if (fd != -1) close(fd);
 }
 
 void sentinelTimer(void) {
     sentinelCheckTiltCondition();
     sentinelHandleDictOfRedisInstances(sentinel.masters);
-    sentinelCheckFlush();
+    sentinelFlushConfigIfNeeded();
     sentinelRunPendingScripts();
     sentinelCollectTerminatedScripts();
     sentinelKillTimedoutScripts();
@@ -5208,6 +5229,11 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->failover_delay_logged = old_delay_log;
         sentinelStartFailoverIfNeeded(ri);
         serverAssert(ri->failover_delay_logged != old_delay_log);
+    }
+
+    TEST("sentinelFlushConfigIfNeeded") {
+        sentinel.need_flush_config++;
+        sentinelFlushConfigIfNeeded();
     }
 
     TEST("sentinelVoteLeader") {
