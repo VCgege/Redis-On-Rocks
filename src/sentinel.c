@@ -4441,7 +4441,7 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
 
     voters = dictSize(master->sentinels)+1; /* All the other sentinels and me.*/
 
-    serverLog(LL_DEBUG,"helper: start vote master | master :%s, master epoch %llu, master->leader_epoch %llu",
+    serverLog(LL_WARNING,"helper: start vote master | master :%s, master epoch %llu, master->leader_epoch %llu",
         master->name, (unsigned long long)epoch, (unsigned long long) master->leader_epoch);
 
     /* Count other sentinels votes */
@@ -4452,7 +4452,7 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
         if (ri->leader != NULL && ri->leader_epoch == counter_epoch)
             sentinelLeaderIncr(counters,ri->leader);
 
-        serverLog(LL_DEBUG, "helper: ri: %s | leader: %s, leader_epoch: %llu",
+        serverLog(LL_WARNING, "helper: ri: %s | leader: %s, leader_epoch: %llu",
             ri->name, ri->leader, (unsigned long long) ri->leader_epoch);
     }
     dictReleaseIterator(di);
@@ -4488,7 +4488,7 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
         }
     }
 
-    serverLog(LL_DEBUG, "helper: counter | winner: %s, max_votes got: %llu", myvote, (unsigned long long) max_votes);
+    serverLog(LL_WARNING, "helper: counter | winner: %s, max_votes got: %llu", myvote, (unsigned long long) max_votes);
 
     voters_quorum = voters/2+1;
     if (winner && (max_votes < voters_quorum || max_votes < master->quorum))
@@ -5224,8 +5224,8 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         di = dictGetIterator(ri->sentinels);
         while((de = dictNext(di)) != NULL) {
             sentinelRedisInstance *sentineli = dictGetVal(de);
-            sentineli -> leader = sentinel.myid;
-            sentineli -> leader_epoch = 2;
+            sentineli->leader = sdsnew(sentinel.myid);
+            sentineli->leader_epoch = 2;
         }
         char * leader = sentinelGetLeader(ri, 2);
         printf("\nleader: %s", leader);
