@@ -5187,15 +5187,15 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     }
 
     TEST("sentinelStartFailoverIfNeeded") {
-        // not delay, ri->failover_delay_logged = not changed
+        // not delay, with SRI_ELECT_ABORT ri->failover_delay_logged will not change
         ri->flags |= SRI_O_DOWN;
         ri->flags &= ~SRI_FAILOVER_IN_PROGRESS;
         ri->flags |= SRI_ELECT_ABORT;
-        ri->failover_start_time = mstime() - SENTINEL_ELECTION_TIMEOUT - 1;
-        ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
+        ri->failover_start_time = mstime();
+        ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT;
         ri->failover_delay_logged = ri->failover_start_time - 1 ;
         sentinelStartFailoverIfNeeded(ri);
-        serverAssert(ri->failover_delay_logged == ri->failover_start_time - 1);
+        serverAssert(ri->failover_delay_logged == (ri->failover_start_time - 1));
     }
 
     TEST("sentinelVoteLeader") {
