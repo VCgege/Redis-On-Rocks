@@ -5195,7 +5195,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         ri->failover_delay_logged = ri->failover_start_time - 1 ;
         sentinelStartFailoverIfNeeded(ri);
-        serverAssert(ri->failover_delay_logged == ri->failover_start_time - 1)
+        serverAssert(ri->failover_delay_logged == ri->failover_start_time - 1);
     }
 
     TEST("sentinelVoteLeader") {
