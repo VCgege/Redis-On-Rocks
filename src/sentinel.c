@@ -4441,7 +4441,7 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
 
     voters = dictSize(master->sentinels)+1; /* All the other sentinels and me.*/
 
-    serverLog(LL_WARNING,"helper: start vote master | master :%s, master epoch %llu, master->leader_epoch %llu",
+    serverLog(LL_DEBUG,"helper: start vote master | master :%s, master epoch %llu, master->leader_epoch %llu",
         master->name, (unsigned long long)epoch, (unsigned long long) master->leader_epoch);
 
     /* Count other sentinels votes */
@@ -4452,7 +4452,7 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
         if (ri->leader != NULL && ri->leader_epoch == counter_epoch)
             sentinelLeaderIncr(counters,ri->leader);
 
-        serverLog(LL_WARNING, "helper: ri: %s | leader: %s, leader_epoch: %llu",
+        serverLog(LL_DEBUG, "helper: ri: %s | leader: %s, leader_epoch: %llu",
             ri->name, ri->leader, (unsigned long long) ri->leader_epoch);
     }
     dictReleaseIterator(di);
@@ -4488,7 +4488,7 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
         }
     }
 
-    serverLog(LL_WARNING, "helper: counter | winner: %s, max_votes got: %llu", myvote, (unsigned long long) max_votes);
+    serverLog(LL_DEBUG, "helper: counter | winner: %s, max_votes got: %llu", myvote, (unsigned long long) max_votes);
 
     voters_quorum = voters/2+1;
     if (winner && (max_votes < voters_quorum || max_votes < master->quorum))
@@ -5166,7 +5166,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     dictAdd(server.pubsub_channels,channel,clients);
     sentinelRedisInstance *ri = initSentinelRedisInstance4Test();
 
-    TEST("SRI_ELECT_ABORT: add") {
+    TEST("sentinelFailoverWaitStart: add SRI_ELECT_ABORT flag") {
         ri->flags |= SRI_O_DOWN;
         ri->flags |= SRI_FAILOVER_IN_PROGRESS;
         ri->failover_start_time = mstime() - SENTINEL_ELECTION_TIMEOUT - 1;
@@ -5175,7 +5175,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         serverAssert((ri->flags & SRI_ELECT_ABORT) != 0);
     }
 
-    TEST("SRI_ELECT_ABORT: remove") {
+    TEST("sentinelFailoverWaitStart: remove SRI_ELECT_ABORT flag") {
         ri->flags |= SRI_O_DOWN;
         ri->flags |= SRI_FAILOVER_IN_PROGRESS;
         ri->flags |= SRI_FORCE_FAILOVER;
@@ -5184,6 +5184,18 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
         sentinelFailoverWaitStart(ri);
         serverAssert((ri->flags & SRI_ELECT_ABORT) == 0);
+    }
+
+    TEST("sentinelStartFailoverIfNeeded") {
+        // not delay, ri->failover_delay_logged = not changed
+        ri->flags |= SRI_O_DOWN;
+        ri->flags &= ~SRI_FAILOVER_IN_PROGRESS;
+        ri->flags |= SRI_ELECT_ABORT;
+        ri->failover_start_time = mstime() - SENTINEL_ELECTION_TIMEOUT - 1;
+        ri->failover_timeout = SENTINEL_ELECTION_TIMEOUT + 1;
+        ri->failover_delay_logged = ri->failover_start_time - 1 ;
+        sentinelStartFailoverIfNeeded(ri);
+        serverAssert(ri->failover_delay_logged == ri->failover_start_time - 1)
     }
 
     TEST("sentinelVoteLeader") {
@@ -5245,7 +5257,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
             sentineli->leader = sdsnew("other");
             sentineli->leader_epoch = 3;
         }
-        // will be other, cos epoch 2 is old
+        // will be other
         leader = sentinelGetLeader(ri, 2);
         printf("\nleader: %s", leader);
         serverAssert(ri->leader_epoch == 3);
