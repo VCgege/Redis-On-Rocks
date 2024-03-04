@@ -5180,6 +5180,9 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     initSentinelConfig();
     initSentinel();
     getRandomHexChars(sentinel.myid, CONFIG_RUN_ID_SIZE);
+    FILE* temp_file = fopen("temp.conf", "w");
+    fclose(temp_file);
+    server.configfile = "temp.conf";
 
     robj* channel = createStringObject("test", sizeof("test"));
     list *clients = listCreate();
@@ -5232,9 +5235,10 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     }
 
     TEST("sentinelFlushConfigIfNeeded") {
-        server.configfile = "../tests/assets/conf/default.conf";
+        
         sentinel.need_flush_config++;
         sentinelFlushConfigIfNeeded();
+        
     }
 
     TEST("sentinelVoteLeader") {
@@ -5307,6 +5311,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         serverAssert(sdscmp(leader, "other") != 0);
     
     }
+    remove("temp_file.txt");
     releaseSentinelRedisInstance(ri);
     return 0;
 }
