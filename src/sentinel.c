@@ -5209,18 +5209,22 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     }
 
     TEST("sentinelGetLeader") {
-        ri->quorum = 3;
-        // add other sentinels
-        sentinelRedisInstance *sentinel2 = createSentinelRedisInstance("sentinel2", SRI_SENTINEL, "192.168.0.2", 4950, ri->quorum, ri);
-        sentinelRedisInstance *sentinel3 = createSentinelRedisInstance("sentinel3", SRI_SENTINEL, "192.168.0.3", 4950, ri->quorum, ri);
-        sentinelRedisInstance *sentinel4 = createSentinelRedisInstance("sentinel4", SRI_SENTINEL, "192.168.0.4", 4950, ri->quorum, ri);
-        sentinelRedisInstance *sentinel5 = createSentinelRedisInstance("sentinel5", SRI_SENTINEL, "192.168.0.5", 4950, ri->quorum, ri);
-
-        // my failover, before 1, start 2
-        sentinelStartFailover(ri);
         dictIterator *di;
         dictEntry *de;
+        sds other_id = sdsnew("other");
+
+        ri->quorum = 5;
+        // add other sentinels
+        createSentinelRedisInstance("sentinel2", SRI_SENTINEL, "192.168.0.2", 4950, ri->quorum, ri);
+        createSentinelRedisInstance("sentinel3", SRI_SENTINEL, "192.168.0.3", 4950, ri->quorum, ri);
+        createSentinelRedisInstance("sentinel4", SRI_SENTINEL, "192.168.0.4", 4950, ri->quorum, ri);
+        createSentinelRedisInstance("other", SRI_SENTINEL, "192.168.0.5", 4950, ri->quorum, ri);
+
+        // start failover 2, was 1 from other, win with quorum=5
+        sentinelStartFailover(ri);
+
         ri->leader_epoch = 1;
+        ri->leader = other_id;
         ri->failover_epoch = 2 ;
         di = dictGetIterator(ri->sentinels);
         while((de = dictNext(di)) != NULL) {
@@ -5229,13 +5233,28 @@ int sentinelTest(int argc, char *argv[], int accurate) {
             sentineli->leader_epoch = 2;
         }
         char * leader = sentinelGetLeader(ri, 2);
-        printf("\nleader: %s", leader);
-        
+        serverAssert(ri->leader_epoch == 2);
+        serverAssert(sdscmp(leader, sentinel.myid) != 0);
 
-        // others win
-
+        // start failover 2, vote 3 to other, fail with quorum=5, win with quorum=4.
+        ri->leader_epoch = 3;
+        ri->leader = other_id;
+        ri->failover_epoch = 2 ;
+        di = dictGetIterator(ri->sentinels);
+        while((de = dictNext(di)) != NULL) {
+            sentinelRedisInstance *sentineli = dictGetVal(de);
+            sentineli->leader = other_id;
+            sentineli->leader_epoch = 3;
+        }
+        leader = sentinelGetLeader(ri, 2);
+        printf("\nquorum 5 leader : %s", leader)
+        serverAssert(!leader);
+        ri->quorum = 5;
+        leader = sentinelGetLeader(ri, 2);
+        serverAssert(ri->leader_epoch == 3);
+        serverAssert(sdscmp(leader, other_id) != 0);
+    
     }
-
     releaseSentinelRedisInstance(ri);
     return 0;
 }
