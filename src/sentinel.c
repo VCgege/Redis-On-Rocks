@@ -5121,9 +5121,9 @@ void sentinelFlushConfigIfNeeded(void) {
     struct stat fileInfo;
     printf("\nconfig: %s", server.configfile);
     if (sentinel.need_flush_config) {
-        sentinelFlushConfig();
+        // sentinelFlushConfig();
         if (stat(server.configfile, &fileInfo) == -1) goto werr;
-        serverLog(LL_DEBUG, "FlushConfig: flush config counter: %d", sentinel.need_flush_config);
+        serverLog(LL_WARNING, "FlushConfig: flush config counter: %d", sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
         sentinel.previous_flush_time = fileInfo.st_mtime;
         return;
