@@ -5218,6 +5218,8 @@ int sentinelTest(int argc, char *argv[], int accurate) {
 
         // my failover
         sentinelStartFailover(ri);
+        dictIterator *di;
+        dictEntry *de;
         ri->failover_epoch = 2 ;
         di = dictGetIterator(ri->sentinels);
         while((de = dictNext(di)) != NULL) {
