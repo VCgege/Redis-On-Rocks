@@ -1145,8 +1145,8 @@ struct rewriteConfigState *rewriteConfigReadOldFile(char *path) {
     FILE *fp = fopen(path,"r");
     if (fp == NULL && errno != ENOENT) return NULL;
 
-    char buf[CONFIG_MAX_LINE+1];
-    int linenum = -1;
+    // char buf[CONFIG_MAX_LINE+1];
+    // int linenum = -1;
     struct rewriteConfigState *state = zmalloc(sizeof(*state));
     state->option_to_line = dictCreate(&optionToLineDictType,NULL);
     state->rewritten = dictCreate(&optionSetDictType,NULL);

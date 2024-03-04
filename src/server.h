@@ -2450,6 +2450,7 @@ void sentinelIsRunning(void);
 void sentinelCheckConfigFile(void);
 #ifdef REDIS_TEST
 int sentinelTest(int argc, char *argv[], int accurate);
+void initServerConfig(void);
 void initServer4Test(void);
 #endif
 

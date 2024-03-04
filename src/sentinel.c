@@ -5271,13 +5271,11 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         }
         // will be other
         leader = sentinelGetLeader(ri, 2);
-        printf("\nleader: %s", leader);
         serverAssert(ri->leader_epoch == 3);
         serverAssert(sdscmp(leader, "other") != 0);
 
         // will be other
         leader = sentinelGetLeader(ri, 3);
-        printf("\nleader: %s", leader);
         serverAssert(ri->leader_epoch == 3);
         serverAssert(sdscmp(leader, "other") != 0);
     
