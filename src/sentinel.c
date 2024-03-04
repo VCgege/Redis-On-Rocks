@@ -5247,7 +5247,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
             sentineli->leader_epoch = 3;
         }
         leader = sentinelGetLeader(ri, 2);
-        printf("\nquorum 5 leader : %s", leader)
+        printf("\nquorum 5 leader : %s", leader);
         serverAssert(!leader);
         ri->quorum = 5;
         leader = sentinelGetLeader(ri, 2);
