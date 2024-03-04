@@ -5223,7 +5223,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         sentinelStartFailover(ri);
 
         ri->leader_epoch = 1;
-        ri->leader = "other";
+        ri->leader = sdsnew("other");
         ri->failover_epoch = 2 ;
         di = dictGetIterator(ri->sentinels);
         while((de = dictNext(di)) != NULL) {
@@ -5237,12 +5237,12 @@ int sentinelTest(int argc, char *argv[], int accurate) {
 
         // start failover 2, new is 3 from other
         ri->leader_epoch = 3;
-        ri->leader ="other";
+        ri->leader = sdsnew("other");
         ri->failover_epoch = 2 ;
         di = dictGetIterator(ri->sentinels);
         while((de = dictNext(di)) != NULL) {
             sentinelRedisInstance *sentineli = dictGetVal(de);
-            sentineli->leader = "other";
+            sentineli->leader = sdsnew("other");
             sentineli->leader_epoch = 3;
         }
         // will be other, cos epoch 2 is old
