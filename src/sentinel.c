@@ -5209,17 +5209,18 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     }
 
     TEST("sentinelGetLeader") {
-        ri->quorum = 5;
+        ri->quorum = 3;
         // add other sentinels
         sentinelRedisInstance *sentinel2 = createSentinelRedisInstance("sentinel2", SRI_SENTINEL, "192.168.0.2", 4950, ri->quorum, ri);
         sentinelRedisInstance *sentinel3 = createSentinelRedisInstance("sentinel3", SRI_SENTINEL, "192.168.0.3", 4950, ri->quorum, ri);
         sentinelRedisInstance *sentinel4 = createSentinelRedisInstance("sentinel4", SRI_SENTINEL, "192.168.0.4", 4950, ri->quorum, ri);
         sentinelRedisInstance *sentinel5 = createSentinelRedisInstance("sentinel5", SRI_SENTINEL, "192.168.0.5", 4950, ri->quorum, ri);
 
-        // my failover
+        // my failover, before 1, start 2
         sentinelStartFailover(ri);
         dictIterator *di;
         dictEntry *de;
+        ri->leader_epoch = 1;
         ri->failover_epoch = 2 ;
         di = dictGetIterator(ri->sentinels);
         while((de = dictNext(di)) != NULL) {
