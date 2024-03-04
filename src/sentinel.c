@@ -5232,6 +5232,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     }
 
     TEST("sentinelFlushConfigIfNeeded") {
+        server.configfile = "../tests/assets/conf/default.conf";
         sentinel.need_flush_config++;
         sentinelFlushConfigIfNeeded();
     }
