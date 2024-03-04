@@ -5194,6 +5194,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->leader = myid;
         //nothing todo
         myvote = sentinelVoteLeader(ri, 1, "other", &leader_epoch);
+        printf("ri->leader: %s, myid: %s", ri->leader, myid);
         serverAssert(sdscmp(ri->leader, myid));
         serverAssert(sdscmp(myvote, myid));
         serverAssert(ri->leader_epoch == 2);
