@@ -5192,10 +5192,11 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         sds myid = sdsnew(sentinel.myid);
         ri->leader_epoch = 2;
         ri->leader = myid;
-        //nothing todo
+        //nothing to do
         myvote = sentinelVoteLeader(ri, 1, "other", &leader_epoch);
         printf("ri->leader: %s, myid: %s", ri->leader, myid);
-        printf("len: %d, len: %d", sdslen(ri->leader), sdslen(myid));
+        printf("\nlen: %d, len: %d", sdslen(ri->leader), sdslen(myid));
+        printf("\nres: %d", sdscmp(ri->leader, myid));
         serverAssert(sdscmp(ri->leader, myid));
         serverAssert(sdscmp(myvote, myid));
         serverAssert(ri->leader_epoch == 2);
