@@ -2347,9 +2347,9 @@ int sentinelRewriteConfig(char *path, int force_all) {
     mtime = fileInfo.st_mtime * 1000;
 
     if (mtime == sentinel.previous_flush_time) {
-        return rewriteConfigNotReadOld(path, 0);
+        return rewriteConfigNotReadOld(path, force_all);
     }
-    return rewriteConfig(path, 0);
+    return rewriteConfig(path, force_all);
 
 werr:
     serverLog(LL_WARNING,"WARNING: Sentinel was not able to read from disk!!!: %s", strerror(errno));
