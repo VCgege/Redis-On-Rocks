@@ -5140,6 +5140,7 @@ void sentinelFlushConfigIfNeeded(void) {
         serverLog(LL_WARNING, "FlushConfig: flush config counter: %d",
             sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
+        fileInfo = NULL;
         if (fstat(fd, &fileInfo) == -1) goto werr;
         sentinel.previous_flush_time = fileInfo.st_mtime * 1000;
     }
