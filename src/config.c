@@ -2576,7 +2576,7 @@ standardConfig configs[] = {
     /* Other configs */
     createTimeTConfig("repl-backlog-ttl", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.repl_backlog_time_limit, 60*60, INTEGER_CONFIG, NULL, NULL), /* Default: 1 hour */
     createOffTConfig("auto-aof-rewrite-min-size", NULL, MODIFIABLE_CONFIG, 0, LLONG_MAX, server.aof_rewrite_min_size, 64*1024*1024, MEMORY_CONFIG, NULL, NULL),
-
+    
     /* ctrip configs */
     createBoolConfig("gtid-enabled", NULL, MODIFIABLE_CONFIG, server.gtid_enabled, 0, NULL, updateGtidEnabled),
     createBoolConfig("gtid-enabled-config-sync-with-master", NULL, MODIFIABLE_CONFIG, server.gtid_enabled_config_sync_with_master, 1, NULL, NULL),
