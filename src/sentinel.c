@@ -5248,6 +5248,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         sentinelFlushConfigIfNeeded();
         if ((fd = open(server.configfile, O_RDONLY)) == -1) goto werr;
         if (fstat(fd, &fileInfo) == -1) goto werr;
+        if (fd != -1) close(fd);
         mstime_t mtime = fileInfo.st_mtime * 1000;
         serverAssert(sentinel.previous_flush_time == mtime);
         serverAssert(sentinel.need_flush_config == 0);
@@ -5256,8 +5257,6 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         // when changed config
         sentinel.previous_flush_time -= 1;
         sentinelFlushConfigIfNeeded();
-        if (fstat(fd, &fileInfo) == -1) goto werr;
-        mtime = fileInfo.st_mtime * 1000;
         serverAssert(sentinel.previous_flush_time == mtime);
         if (fd != -1) close(fd);
 
