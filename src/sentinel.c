@@ -4492,7 +4492,10 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
         }
     }
 
-    serverLog(LL_DEBUG, "helper: counter | winner: %s, max_votes got: %llu", myvote, (unsigned long long) max_votes);
+    serverLog(LL_DEBUG, 
+        "helper: counter | winner: %s, max_votes got: %llu",
+        myvote, 
+        (unsigned long long) max_votes);
 
     voters_quorum = voters/2+1;
     if (winner && (max_votes < voters_quorum || max_votes < master->quorum))
@@ -4629,7 +4632,9 @@ int sentinelStartFailoverIfNeeded(sentinelRedisInstance *master) {
     if (master->flags & SRI_FAILOVER_IN_PROGRESS) return 0;
 
     /* Last failover attempt started too little time ago? */
-    if ((mstime() - master->failover_start_time < master->failover_timeout*2) && !(master->flags & SRI_ELECT_ABORT)) {
+    if ((mstime() - master->failover_start_time < master->failover_timeout*2) 
+        && !(master->flags & SRI_ELECT_ABORT)) 
+    {
         if (master->failover_delay_logged != master->failover_start_time) {
             time_t clock = (master->failover_start_time +
                             master->failover_timeout*2) / 1000;
@@ -5171,7 +5176,8 @@ void sentinelTimer(void) {
 void releaseSentinelRedisInstance(sentinelRedisInstance *ri);
 
 sentinelRedisInstance *initSentinelRedisInstance4Test() {
-    sentinelRedisInstance *ri = createSentinelRedisInstance("localhost", SRI_MASTER, "192.168.0.1", 20000, 3, NULL);
+    sentinelRedisInstance *ri = 
+        createSentinelRedisInstance("localhost", SRI_MASTER, "192.168.0.1", 20000, 3, NULL);
     return ri;
 }
 
