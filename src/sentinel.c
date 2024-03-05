@@ -5121,6 +5121,7 @@ void sentinelCheckTiltCondition(void) {
 void sentinelFlushConfigIfNeeded(void) {
     int fd = -1;
     struct stat fileInfo;
+    struct stat newFileInfo;
 
     if ((fd = open(server.configfile, O_RDONLY)) == -1) {
         printf("here");
@@ -5140,9 +5141,8 @@ void sentinelFlushConfigIfNeeded(void) {
         serverLog(LL_WARNING, "FlushConfig: flush config counter: %d",
             sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
-        fileInfo = NULL;
-        if (fstat(fd, &fileInfo) == -1) goto werr;
-        sentinel.previous_flush_time = fileInfo.st_mtime * 1000;
+        if (fstat(fd, &newFileInfo) == -1) goto werr;
+        sentinel.previous_flush_time = newFileInfo.st_mtime * 1000;
     }
     if (fd != -1) close(fd);
     return;
