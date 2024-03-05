@@ -5119,28 +5119,24 @@ void sentinelCheckTiltCondition(void) {
 
 void sentinelFlushConfigIfNeeded(void) {
     struct stat fileInfo;
-    printf("config: %s\n", server.configfile);
-    if (sentinel.need_flush_config) {
+    if (stat(server.configfile, &fileInfo) == -1) goto werr;
+    mstime_t mtime = fileInfo.st_mtime * 1000;
+
+    if (sentinel.need_flush_config || mtime != sentinel.previous_flush_time) {
+    #ifndef REDIS_TEST
         sentinelFlushConfig();
-        if (stat(server.configfile, &fileInfo) == -1) goto werr;
+    #endif
         serverLog(LL_WARNING, "FlushConfig: flush config counter: %d", sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
-        sentinel.previous_flush_time = fileInfo.st_mtime;
+        if (stat(server.configfile, &fileInfo) == -1) goto werr;
+        sentinel.previous_flush_time = fileInfo.st_mtime * 1000;
         return;
     }
     
-    if (stat(server.configfile, &fileInfo) == -1) goto werr;
-    mstime_t mtime = fileInfo.st_mtime; // 获取修改时间（单位为秒）
-    printf("\nmtime: %lld, previous: %lld", mtime, sentinel.previous_flush_time);
-
-    if (mtime != sentinel.previous_flush_time) {
-        sentinelFlushConfig();
-        sentinel.previous_flush_time = fileInfo.st_mtime;
-    }
-    return;
-
 werr:
-    serverLog(LL_WARNING,"WARNING: Sentinel was not able to save the new configuration on disk!!!: %s", strerror(errno));
+    serverLog(LL_WARNING, 
+        "WARNING: Sentinel was not able to save the new configuration on disk!!!: %s",
+        strerror(errno));
 }
 
 void sentinelTimer(void) {
@@ -5181,7 +5177,6 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     initSentinel();
     getRandomHexChars(sentinel.myid, CONFIG_RUN_ID_SIZE);
     FILE* temp_file = fopen("temp.conf", "w");
-    char* str = "user default on nopass ~* &* +@all\n"; 
     fwrite(str, sizeof(char), strlen(str), temp_file);
     fclose(temp_file);
     server.configfile = "temp.conf";
@@ -5238,16 +5233,24 @@ int sentinelTest(int argc, char *argv[], int accurate) {
 
     TEST("sentinelFlushConfigIfNeeded") {
         struct stat fileInfo;
-        if (stat(server.configfile, &fileInfo) == -1) goto werr;
-        mstime_t mtime = fileInfo.st_mtime; 
-        printf("mtime: %lld, previous: %lld\n", mtime, sentinel.previous_flush_time);
-
+        serverAssert(sentinel.previous_flush_time == 0);
+        
+        // when need flush config
         sentinel.need_flush_config++;
-        if (stat(server.configfile, &fileInfo) == -1) goto werr;
         sentinelFlushConfigIfNeeded();
-        serverAssert(mtime != fileInfo.st_mtime);
+        if (stat(server.configfile, &fileInfo) == -1) goto werr;
+        mstime_t mtime = fileInfo.st_mtime * 1000;
+        serverAssert(sentinel.previous_flush_time == mtime);
+        serverAssert(sentinel.need_flush_config == 0);
+        printf("previous: %lld", sentinel.previous_flush_time);
 
-        printf("\nmtime: %lld, previous: %lld", fileInfo.st_mtime, sentinel.previous_flush_time);
+        // when changed config
+        sentinel.previous_flush_time -= 1;
+        sentinelFlushConfigIfNeeded();
+        if (stat(server.configfile, &fileInfo) == -1) goto werr;
+        mtime = fileInfo.st_mtime * 1000;
+        serverAssert(sentinel.previous_flush_time == mtime);
+
     werr:
         serverLog(LL_WARNING,"WARNING: Sentinel was not able to save the new configuration on disk!!!: %s", strerror(errno));
     }
