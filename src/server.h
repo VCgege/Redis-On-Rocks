@@ -2450,6 +2450,7 @@ void queueSentinelConfig(sds *argv, int argc, int linenum, sds line);
 void loadSentinelConfigFromQueue(void);
 void sentinelIsRunning(void);
 void sentinelCheckConfigFile(void);
+int sentinelRewriteConfig(char *path, int force_all);
 #ifdef REDIS_TEST
 int sentinelTest(int argc, char *argv[], int accurate);
 void initServerConfig(void);
