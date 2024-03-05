@@ -5119,9 +5119,12 @@ void sentinelCheckTiltCondition(void) {
 }
 
 void sentinelFlushConfigIfNeeded(void) {
+    int fd = -1;
     struct stat fileInfo;
-    fstat(server.configfile, &fileInfo);
-    if (fstat(server.configfile, &fileInfo) == -1) goto werr;
+
+    if ((fd = open(server.configfile,O_RDONLY)) == -1) goto werr;
+
+    if (fstat(fd, &fileInfo) == -1) goto werr;
     mstime_t mtime = fileInfo.st_mtime * 1000;
 
     if (sentinel.need_flush_config || mtime != sentinel.previous_flush_time) {
@@ -5132,13 +5135,16 @@ void sentinelFlushConfigIfNeeded(void) {
         sentinel.need_flush_config = 0;
         if (fstat(server.configfile, &fileInfo) == -1) goto werr;
         sentinel.previous_flush_time = fileInfo.st_mtime * 1000;
-        return;
     }
+    if (fd != -1) close(fd);
+    return;
     
 werr:
     serverLog(LL_WARNING, 
         "WARNING: Sentinel was not able to save the new configuration on disk!!!: %s",
-        strerror(errno));
+        strerror(errno));    
+    if (fd != -1) close(fd);
+    
 }
 
 void sentinelTimer(void) {
