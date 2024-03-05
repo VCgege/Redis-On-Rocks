@@ -5122,10 +5122,16 @@ void sentinelFlushConfigIfNeeded(void) {
     int fd = -1;
     struct stat fileInfo;
 
-    if ((fd = open(server.configfile, O_RDONLY)) == -1) goto werr;
+    if ((fd = open(server.configfile, O_RDONLY)) == -1) {
+        printf("here");
+        goto werr;
+    }
+    
 
     if (fstat(fd, &fileInfo) == -1) goto werr;
     mstime_t mtime = fileInfo.st_mtime * 1000;
+    printf("previous: %lld\n", sentinel.previous_flush_time);
+    printf("mtime: %lld\n", mtime);
 
     if (sentinel.need_flush_config || mtime != sentinel.previous_flush_time) {
     #ifndef REDIS_TEST
