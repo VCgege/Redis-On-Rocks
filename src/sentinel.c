@@ -5121,17 +5121,11 @@ void sentinelCheckTiltCondition(void) {
 void sentinelFlushConfigIfNeeded(void) {
     int fd = -1;
     struct stat fileInfo;
+    mstime_t mtime;
 
-    if ((fd = open(server.configfile, O_RDONLY)) == -1) {
-        printf("here");
-        goto werr;
-    }
-    
-
+    if ((fd = open(server.configfile, O_RDONLY)) == -1) goto werr;
     if (fstat(fd, &fileInfo) == -1) goto werr;
-    mstime_t mtime = fileInfo.st_mtime * 1000;
-    printf("--previous: %lld\n", sentinel.previous_flush_time);
-    printf("--mtime: %lld\n", mtime);
+    mtime = fileInfo.st_mtime * 1000;
 
     if (sentinel.need_flush_config || mtime != sentinel.previous_flush_time) {
     #ifndef REDIS_TEST
@@ -5252,26 +5246,18 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         // when need flush config
         sentinel.need_flush_config++;
         sentinelFlushConfigIfNeeded();
-        if ((fd = open(server.configfile, O_RDONLY)) == -1) goto werr;
-        if (fstat(fd, &fileInfo) == -1) goto werr;
+        if ((fd = open(server.configfile, O_RDONLY)) == -1) return -1;
+        if (fstat(fd, &fileInfo) == -1) return -1;
         if (fd != -1) close(fd);
         mstime_t mtime = fileInfo.st_mtime * 1000;
         serverAssert(sentinel.previous_flush_time == mtime);
         serverAssert(sentinel.need_flush_config == 0);
-        printf("previous: %lld\n", sentinel.previous_flush_time);
 
         // when changed config
         sentinel.previous_flush_time -= 1;
         sentinelFlushConfigIfNeeded();
         serverAssert(sentinel.previous_flush_time == mtime);
-        printf("previous now: %lld\n", sentinel.previous_flush_time);
         if (fd != -1) close(fd);
-
-    werr:
-        serverLog(LL_WARNING, 
-            "WARNING: Sentinel was not able to save the new configuration on disk!!!: %s",
-            strerror(errno));    
-        if (fd != -1) close(fd);  
     }
 
     TEST("sentinelVoteLeader") {
