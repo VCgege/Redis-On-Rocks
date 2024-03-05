@@ -5141,7 +5141,7 @@ void sentinelFlushConfigIfNeeded(void) {
             sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
         if (fstat(fd, &fileInfo) == -1) goto werr;
-        sentinel.previous_flush_time = newFileInfo.st_mtime * 1000;
+        sentinel.previous_flush_time = fileInfo.st_mtime * 1000;
     }
     if (fd != -1) close(fd);
     return;
@@ -5274,22 +5274,22 @@ int sentinelTest(int argc, char *argv[], int accurate) {
             "WARNING: Sentinel was not able to save the new configuration on disk!!!: %s",
             strerror(errno));    
         if (fd != -1) close(fd);
-        return;
+        return 0;
     werr2:
         serverLog(LL_WARNING, 
             "WARNING: werr2: %s",
             strerror(errno)); 
-        return;   
+        return 0;   
     werr3:
         serverLog(LL_WARNING, 
             "WARNING: werr3: %s",
             strerror(errno)); 
-        return;   
+        return 0;   
     werr4:
         serverLog(LL_WARNING, 
             "WARNING: werr4: %s",
             strerror(errno)); 
-        return;   
+        return 0;   
     }
 
     TEST("sentinelVoteLeader") {
