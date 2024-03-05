@@ -4959,7 +4959,7 @@ void sentinelFailoverReconfNextSlave(sentinelRedisInstance *master) {
 
     di = dictGetIterator(master->slaves);
     while(in_progress < master->parallel_syncs &&
-        (de = dictNext(di)) != NULL)
+         (de = dictNext(di)) != NULL)
     {
         sentinelRedisInstance *slave = dictGetVal(de);
         int retval;
