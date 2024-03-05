@@ -5119,10 +5119,10 @@ void sentinelCheckTiltCondition(void) {
 }
 
 void sentinelFlushConfigIfNeeded(void) {
-    FILE *fd = NULL;
+    int fd = -1;
     struct stat fileInfo;
 
-    if ((fd = fopen(server.configfile, "r")) == -1) goto werr;
+    if ((fd = open(server.configfile, O_RDONLY)) == -1) goto werr;
 
     if (fstat(fd, &fileInfo) == -1) goto werr;
     mstime_t mtime = fileInfo.st_mtime * 1000;
@@ -5137,14 +5137,14 @@ void sentinelFlushConfigIfNeeded(void) {
         if (fstat(fd, &fileInfo) == -1) goto werr;
         sentinel.previous_flush_time = fileInfo.st_mtime * 1000;
     }
-    if (fd != NULL) fclose(fd);
+    if (fd != -1) close(fd);
     return;
     
 werr:
     serverLog(LL_WARNING, 
         "WARNING: Sentinel was not able to save the new configuration on disk!!!: %s",
         strerror(errno));    
-    if (fd != -1) fclose(fd);
+    if (fd != -1) close(fd);
 }
 
 void sentinelTimer(void) {
@@ -5239,14 +5239,14 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     }
 
     TEST("sentinelFlushConfigIfNeeded") {
-        FILE *fd = NULL;
+        int fd = -1;
         struct stat fileInfo;
         serverAssert(sentinel.previous_flush_time == 0);
         
         // when need flush config
         sentinel.need_flush_config++;
         sentinelFlushConfigIfNeeded();
-        if ((fd = fopen(server.configfile, "r")) == -1) goto werr;
+        if ((fd = open(server.configfile, O_RDONLY)) == -1) goto werr;
         if (fstat(fd, &fileInfo) == -1) goto werr;
         mstime_t mtime = fileInfo.st_mtime * 1000;
         serverAssert(sentinel.previous_flush_time == mtime);
@@ -5259,13 +5259,13 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         if (fstat(fd, &fileInfo) == -1) goto werr;
         mtime = fileInfo.st_mtime * 1000;
         serverAssert(sentinel.previous_flush_time == mtime);
-        fclose(fd);
+        if (fd != -1) close(fd);
 
     werr:
         serverLog(LL_WARNING, 
             "WARNING: Sentinel was not able to save the new configuration on disk!!!: %s",
             strerror(errno));    
-        if (fd != NULL) fclose(fd);
+        if (fd != -1) close(fd);
     }
 
     TEST("sentinelVoteLeader") {
