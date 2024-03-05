@@ -5120,6 +5120,7 @@ void sentinelCheckTiltCondition(void) {
 
 void sentinelFlushConfigIfNeeded(void) {
     struct stat fileInfo;
+    fstat(server.configfile, &fileInfo);
     if (fstat(server.configfile, &fileInfo) == -1) goto werr;
     mstime_t mtime = fileInfo.st_mtime * 1000;
 
