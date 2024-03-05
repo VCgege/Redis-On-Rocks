@@ -126,6 +126,36 @@ configEnum sanitize_dump_payload_enum[] = {
     {NULL, 0}
 };
 
+configEnum swap_mode_enum[] = {
+    {"memory", SWAP_MODE_MEMORY},
+    {"disk", SWAP_MODE_DISK},
+    {NULL, 0}
+};
+
+configEnum rocksdb_compression_enum[] = {
+    {"optimized_for_compaction", -1},
+    {"no", rocksdb_no_compression},
+    {"snappy", rocksdb_snappy_compression},
+    {"zlib", rocksdb_zlib_compression},
+    {NULL, 0}
+};
+
+configEnum cuckoo_filter_bit_type_enum[] = {
+    {"8", CUCKOO_FILTER_BITS_PER_TAG_8},
+    {"12", CUCKOO_FILTER_BITS_PER_TAG_12},
+    {"16", CUCKOO_FILTER_BITS_PER_TAG_16},
+    {"32", CUCKOO_FILTER_BITS_PER_TAG_32},
+    {NULL, 0}
+};
+
+configEnum swap_ratelimit_policy_enum[] = {
+    {"pause", SWAP_RATELIMIT_POLICY_PAUSE},
+    {"reject_oom", SWAP_RATELIMIT_POLICY_REJECT_OOM},
+    {"reject_all", SWAP_RATELIMIT_POLICY_REJECT_ALL},
+    {"disabled", SWAP_RATELIMIT_POLICY_DISABLED},
+    {NULL, 0}
+};
+
 /*-----------------------------------------------------------------------------
  * Ctrip Config file name-value maps.
  *----------------------------------------------------------------------------*/
@@ -140,6 +170,15 @@ clientBufferLimitsConfig clientBufferLimitsDefaults[CLIENT_TYPE_OBUF_COUNT] = {
     {0, 0, 0}, /* normal */
     {1024*1024*256, 1024*1024*64, 60}, /* slave */
     {1024*1024*32, 1024*1024*8, 60}  /* pubsub */
+};
+
+/* swap batch limits presets. */
+swapBatchLimitsConfig swapBatchLimitsDefaults[SWAP_TYPES] = {
+    {0, 0}, /* NOP */
+    {SWAP_BATCH_DEFAULT_SIZE, 1024*1024*1}, /* IN */
+    {SWAP_BATCH_DEFAULT_SIZE, 1024*1024*1}, /* OUT */
+    {SWAP_BATCH_DEFAULT_SIZE, 1024*1024*1},  /* DEL */
+    {0, 0}, /* UTILS */
 };
 
 /* OOM Score defaults */
@@ -584,6 +623,20 @@ void loadServerConfigFromString(char *config) {
             server.client_obuf_limits[class].hard_limit_bytes = hard;
             server.client_obuf_limits[class].soft_limit_bytes = soft;
             server.client_obuf_limits[class].soft_limit_seconds = soft_seconds;
+        } else if (!strcasecmp(argv[0],"swap-batch-limit") &&
+                   argc == 4)
+        {
+            int intention = getSwapIntentionByName(argv[1]), count;
+            unsigned long long mem;
+
+            if (intention <= 0 || intention == SWAP_UTILS) {
+                err = "Unrecognized or unsupported swap intention name.";
+                goto loaderr;
+            }
+            count = atoi(argv[2]);
+            mem = memtoll(argv[3],NULL);
+            server.swap_batch_limits[intention].count = count;
+            server.swap_batch_limits[intention].mem = mem;
         } else if (!strcasecmp(argv[0],"oom-score-adj-values") && argc == 1 + CONFIG_OOM_COUNT) {
             if (updateOOMScoreAdjValues(&argv[1], &err, 0) == C_ERR) goto loaderr;
         } else if (!strcasecmp(argv[0],"notify-keyspace-events") && argc == 2) {
@@ -849,6 +902,49 @@ void configSetCommand(client *c) {
             server.client_obuf_limits[class].soft_limit_seconds = soft_seconds;
         }
         sdsfreesplitres(v,vlen);
+    } config_set_special_field("swap-batch-limit") {
+        int vlen, j;
+        sds *v = sdssplitlen(o->ptr,sdslen(o->ptr)," ",1,&vlen);
+
+        /* We need a multiple of 3: <intention> <count> <memory> */
+        if (vlen % 3) {
+            sdsfreesplitres(v,vlen);
+            goto badfmt;
+        }
+
+        /* Sanity check of single arguments, so that we either refuse the
+         * whole configuration string or accept it all, even if a single
+         * error in a single client class is present. */
+        for (j = 0; j < vlen; j++) {
+            long val;
+
+            if ((j % 3) == 0) {
+                int intention = getSwapIntentionByName(v[j]);
+                if (intention <= 0 || intention == SWAP_UTILS) {
+                    sdsfreesplitres(v,vlen);
+                    goto badfmt;
+                }
+            } else {
+                val = memtoll(v[j], &err);
+                if (err || val < 0) {
+                    sdsfreesplitres(v,vlen);
+                    goto badfmt;
+                }
+            }
+        }
+        /* Finally set the new config */
+        for (j = 0; j < vlen; j += 3) {
+            int intention, count;
+            unsigned long long mem;
+
+            intention = getSwapIntentionByName(v[j]);
+            count = strtoll(v[j+1],NULL,10);
+            mem = memtoll(v[j+2],NULL);
+
+            server.swap_batch_limits[intention].count = count;
+            server.swap_batch_limits[intention].mem = mem;
+        }
+        sdsfreesplitres(v,vlen);
     } config_set_special_field("oom-score-adj-values") {
         int vlen;
         int success = 1;
@@ -1000,6 +1096,23 @@ void configGetCommand(client *c) {
         sdsfree(buf);
         matches++;
     }
+    if (stringmatch(pattern,"swap-batch-limit",1)) {
+        sds buf = sdsempty();
+        int j;
+
+        for (j = 1; j < SWAP_UTILS; j++) {
+            buf = sdscatprintf(buf,"%s %d %llu",
+                    swapIntentionName(j),
+                    server.swap_batch_limits[j].count,
+                    server.swap_batch_limits[j].mem);
+            if (j != SWAP_UTILS-1)
+                buf = sdscatlen(buf," ",1);
+        }
+        addReplyBulkCString(c,"swap-batch-limit");
+        addReplyBulkCString(c,buf);
+        sdsfree(buf);
+        matches++;
+    }
     if (stringmatch(pattern,"unixsocketperm",1)) {
         char buf[32];
         snprintf(buf,sizeof(buf),"%lo",(unsigned long) server.unixsocketperm);
@@ -1075,6 +1188,7 @@ void dictListDestructor(void *privdata, void *val);
 /* Sentinel config rewriting is implemented inside sentinel.c by
  * rewriteConfigSentinelOption(). */
 void rewriteConfigSentinelOption(struct rewriteConfigState *state);
+mstime_t getSentinelPreviousFlushTime(void);
 
 dictType optionToLineDictType = {
     dictSdsCaseHash,            /* hash function */
@@ -1141,12 +1255,13 @@ void rewriteConfigMarkAsProcessed(struct rewriteConfigState *state, const char *
  * If it is impossible to read the old file, NULL is returned.
  * If the old file does not exist at all, an empty state is returned. */
 struct rewriteConfigState *rewriteConfigReadOldFile(char *path) {
-
     FILE *fp = fopen(path,"r");
     if (fp == NULL && errno != ENOENT) return NULL;
 
     char buf[CONFIG_MAX_LINE+1];
     int linenum = -1;
+    struct stat fileInfo;
+    mstime_t mtime;
     struct rewriteConfigState *state = zmalloc(sizeof(*state));
     state->option_to_line = dictCreate(&optionToLineDictType,NULL);
     state->rewritten = dictCreate(&optionSetDictType,NULL);
@@ -1155,6 +1270,16 @@ struct rewriteConfigState *rewriteConfigReadOldFile(char *path) {
     state->has_tail = 0;
     state->force_all = 0;
     if (fp == NULL) return state;
+    if (server.sentinel_mode) {
+        fstat(fileno(fp), &fileInfo);
+        mtime = fileInfo.st_mtime * 1000;
+        if (mtime == getSentinelPreviousFlushTime()) {
+            return state;
+        }
+         serverLog(LL_WARNING,
+            "mtime : %lld, pre : %lld",
+            (unsigned long long)mtime, (unsigned long long)getSentinelPreviousFlushTime());
+    }
 
     /* Read the old file line by line, populate the state. */
     while(fgets(buf,CONFIG_MAX_LINE+1,fp) != NULL) {
@@ -1174,7 +1299,6 @@ struct rewriteConfigState *rewriteConfigReadOldFile(char *path) {
 
         /* Not a comment, split into arguments. */
         argv = sdssplitargs(line,&argc);
-
         if (argv == NULL) {
             /* Apparently the line is unparsable for some reason, for
              * instance it may have unbalanced quotes. Load it as a
@@ -1511,6 +1635,28 @@ void rewriteConfigClientoutputbufferlimitOption(struct rewriteConfigState *state
     }
 }
 
+/* Rewrite the swap-batch-limit option. */
+void rewriteConfigSwapBatchlimitOption(struct rewriteConfigState *state) {
+    int j;
+    char *option = "swap-batch-limit";
+
+    for (j = 1; j < SWAP_UTILS; j++) {
+        int force = (server.swap_batch_limits[j].count !=
+                    swapBatchLimitsDefaults[j].count) ||
+                    (server.swap_batch_limits[j].mem !=
+                    swapBatchLimitsDefaults[j].mem);
+        sds line;
+        char mem[64];
+
+        rewriteConfigFormatMemory(mem,sizeof(mem),
+                server.swap_batch_limits[j].mem);
+
+        const char *typename = swapIntentionName(j);
+        line = sdscatprintf(sdsempty(),"%s %s %d %s",
+                option, typename, server.swap_batch_limits[j].count, mem);
+        rewriteConfigRewriteLine(state,option,line,force);
+    }
+}
 /* Rewrite the oom-score-adj-values option. */
 void rewriteConfigOOMScoreAdjValuesOption(struct rewriteConfigState *state) {
     int force = 0;
@@ -1647,7 +1793,7 @@ int rewriteConfigOverwriteFile(char *configfile, sds content) {
         serverLog(LL_WARNING, "Could not create tmp config file (%s)", strerror(errno));
         return retval;
     }
-    
+
     while (offset < sdslen(content)) {
          written_bytes = write(fd, content + offset, sdslen(content) - offset);
          if (written_bytes <= 0) {
@@ -2261,6 +2407,48 @@ static int updateGtidEnabled(int val, int prev, const char **err) {
     return 1;
 }
 
+static int updateSwapCuckooFilterEnabled(int val, int prev, const char **err) {
+    UNUSED(err);
+    if (prev != val) {
+        if (val) {
+            serverLog(LL_WARNING, "swap cuckoo filter can't be enable dynamically.");
+            return 0;
+        } else {
+            for (int i = 0; i < server.dbnum; i++) {
+                redisDb *db = server.db+i;
+                if (db->cold_filter->filter == NULL) continue;
+                cuckooFilterFree(db->cold_filter->filter);
+                db->cold_filter->filter = NULL;
+            }
+            serverLog(LL_WARNING, "swap cuckoo filter disabled.");
+        }
+    }
+    return 1;
+}
+
+static int updateSwapAbsentCacheEnabled(int val, int prev, const char **err) {
+    UNUSED(err);
+    if (prev != val) {
+        if (val) {
+            serverLog(LL_WARNING, "absent cache enabled with capacity(%llu).", server.swap_absent_cache_capacity);
+            for (int i = 0; i < server.dbnum; i++) {
+                redisDb *db = server.db+i;
+                serverAssert(db->cold_filter->absents == NULL);
+                db->cold_filter->absents = absentCacheNew(server.swap_absent_cache_capacity);
+            }
+        } else {
+            serverLog(LL_WARNING, "absent cache disabled.");
+            for (int i = 0; i < server.dbnum; i++) {
+                redisDb *db = server.db+i;
+                serverAssert(db->cold_filter->absents != NULL);
+                absentCacheFree(db->cold_filter->absents);
+                db->cold_filter->absents = NULL;
+            }
+        }
+    }
+    return 1;
+}
+
 static int updateReplBacklogSize(long long val, long long prev, const char **err) {
     /* resizeReplicationBacklog sets server.repl_backlog_size, and relies on
      * being able to tell when the size changes, so restore prev before calling it. */
@@ -2274,20 +2462,265 @@ static int updateMaxmemory(long long val, long long prev, const char **err) {
     UNUSED(prev);
     UNUSED(err);
     if (val) {
+        server.maxmemory_updated_time_last = server.unixtime;
         size_t used = zmalloc_used_memory()-freeMemoryGetNotCountedMemory();
         if ((unsigned long long)val < used) {
             serverLog(LL_WARNING,"WARNING: the new maxmemory value set via CONFIG SET (%llu) is smaller than the current memory usage (%zu). This will result in key eviction and/or the inability to accept new write commands depending on the maxmemory-policy.", server.maxmemory, used);
+            server.maxmemory_scale_from = calculateNextMemoryLimit(used, prev, val);
         }
         performEvictions();
     }
     return 1;
 }
 
+static int updateSwapAbsentCacheCapacity(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    UNUSED(err);
+    if (val) {
+        for (int i = 0; i < server.dbnum; i++) {
+            redisDb *db = server.db+i;
+            if (db->cold_filter->absents)
+                absentCacheSetCapacity(db->cold_filter->absents, val);
+        }
+    }
+    return 1;
+}
+
+static int updateRocksdbCFOption(int cf,char *key, char *val, const char**err) {
+    rocks* rocks = serverRocksGetTryReadLock();
+    if (rocks == NULL) {
+        *err = "Fail to set option, check rocksdb state.";
+        return 0;
+    }
+
+    char* inner_err = NULL;
+    const char* const option_keys[] = {key};
+    const char* const option_vals[] = {val};
+    rocksdb_set_options_cf(rocks->db, rocks->cf_handles[cf],
+                           1, option_keys, option_vals, &inner_err);
+    if (inner_err != NULL) {
+        serverLog(LL_WARNING, "[ROCKS] rocksdb set options %s:%s failed: %s", key, val, inner_err);
+        zlibc_free(inner_err);
+        *err = "Fail to set option, rocksdb fail.";
+        serverRocksUnlock(rocks);
+        return 0;
+    }
+
+    serverRocksUnlock(rocks);
+    return 1;
+}
+
+static int updateRocksdbCFOptionNumber(int cf,char *key, long long val, const char**err) {
+    char val_str[20] = {0};
+    sprintf(val_str, "%lld", val);
+    return updateRocksdbCFOption(cf,key,val_str,err);
+}
+
+static int updateRocksdbCFOptionPersent(int cf,char *key, int val, const char**err) {
+    char val_str[20] = {0};
+    sprintf(val_str, "%.2f", val / 100.0);
+    return updateRocksdbCFOption(cf,key,val_str,err);
+}
+
+static int updateRocksdbCFOptionBoolean(int cf,char *key, int val, const char**err) {
+    char *val_str = val ? "true" : "false";
+    return updateRocksdbCFOption(cf,key,val_str,err);
+}
+
+static int updateRocksdbDataCompactPeriod(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(DATA_CF, "periodic_compaction_seconds", val, err) &&
+           updateRocksdbCFOptionNumber(SCORE_CF, "periodic_compaction_seconds", val, err);
+}
+
+static int updateRocksdbMetaCompactPeriod(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(META_CF, "periodic_compaction_seconds", val, err);
+}
+
+static int updateRocksdbDataMinBlobSize(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(DATA_CF, "min_blob_size", val, err) &&
+           updateRocksdbCFOptionNumber(SCORE_CF, "min_blob_size", val, err);
+}
+
+static int updateRocksdbMetaMinBlobSize(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(META_CF, "min_blob_size", val, err);
+}
+
+static int updateRocksdbDataBlobFileSize(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(DATA_CF, "blob_file_size", val, err) &&
+           updateRocksdbCFOptionNumber(SCORE_CF, "blob_file_size", val, err);
+}
+
+static int updateRocksdbMetaBlobFileSize(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(META_CF, "blob_file_size", val, err);
+}
+
+static int updateRocksdbDataDisableAutoCompactions(int val, int prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionBoolean(DATA_CF, "disable_auto_compactions", val, err);
+           updateRocksdbCFOptionBoolean(SCORE_CF, "disable_auto_compactions", val, err);
+}
+
+static int updateRocksdbMetaDisableAutoCompactions(int val, int prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionBoolean(META_CF, "disable_auto_compactions", val, err);
+}
+
+static int updateRocksdbDataEnableBlobFiles(int val, int prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionBoolean(DATA_CF, "enable_blob_files", val, err);
+           updateRocksdbCFOptionBoolean(SCORE_CF, "enable_blob_files", val, err);
+}
+
+static int updateRocksdbMetaEnableBlobFiles(int val, int prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionBoolean(META_CF, "enable_blob_files", val, err);
+}
+
+static int updateRocksdbDataEnableBlobGarbageCollection(int val, int prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionBoolean(DATA_CF, "enable_blob_garbage_collection", val, err);
+           updateRocksdbCFOptionBoolean(SCORE_CF, "enable_blob_garbage_collection", val, err);
+}
+
+static int updateRocksdbMetaEnableBlobGarbageCollection(int val, int prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionBoolean(META_CF, "enable_blob_garbage_collection", val, err);
+}
+
+static int updateRocksdbDataBlobGarbageCollectionAgeCutoffPercentage(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionPersent(DATA_CF, "blob_garbage_collection_age_cutoff", val, err);
+           updateRocksdbCFOptionPersent(SCORE_CF, "blob_garbage_collection_age_cutoff", val, err);
+}
+
+static int updateRocksdbMetaBlobGarbageCollectionAgeCutoffPercentage(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionPersent(META_CF, "blob_garbage_collection_age_cutoff", val, err);
+}
+
+static int updateRocksdbDataBlobGarbageCollectionForceThresholdPercentage(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionPersent(DATA_CF, "blob_garbage_collection_force_threshold", val, err);
+           updateRocksdbCFOptionPersent(SCORE_CF, "blob_garbage_collection_force_threshold", val, err);
+}
+
+static int updateRocksdbMetaBlobGarbageCollectionForceThresholdPercentage(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionPersent(META_CF, "blob_garbage_collection_force_threshold", val, err);
+}
+
+const char *rocksdbCompressionTypeName(int val) {
+    const char *name = configEnumGetNameOrUnknown(rocksdb_compression_enum, val);
+    if (!strcmp(name, "no")) {
+        return "kNoCompression";
+    } else if (!strcmp(name, "snappy")) {
+        return "kSnappyCompression";
+    } else if (!strcmp(name, "zlib")) {
+        return "kZlibCompression";
+    } else {
+        return "unknown";
+    }
+}
+
+static int updateRocksdbDataCompression(int val, int prev, const char **err) {
+    UNUSED(prev);
+    char *val_str = (char*)rocksdbCompressionTypeName(val);
+    return updateRocksdbCFOption(DATA_CF, "compression", val_str, err) &&
+           updateRocksdbCFOption(SCORE_CF, "compression", val_str, err);
+}
+
+static int updateRocksdbMetaCompression(int val, int prev, const char **err) {
+    UNUSED(prev);
+    char *val_str = (char*)rocksdbCompressionTypeName(val);
+    return updateRocksdbCFOption(META_CF, "compression", val_str, err);
+}
+
+static int updateRocksdbDataMaxWriteBufferNumber(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(DATA_CF, "max_write_buffer_number", val, err) &&
+           updateRocksdbCFOptionNumber(SCORE_CF, "max_write_buffer_number", val, err);
+}
+
+static int updateRocksdbMetaMaxWriteBufferNumber(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(META_CF, "max_write_buffer_number", val, err);
+}
+
+static int updateRocksdbDataLevel0SlowdownWritesTrigger(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(DATA_CF, "level0_slowdown_writes_trigger", val, err) &&
+           updateRocksdbCFOptionNumber(SCORE_CF, "level0_slowdown_writes_trigger", val, err);
+}
+
+static int updateRocksdbMetaLevel0SlowdownWritesTrigger(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(META_CF, "level0_slowdown_writes_trigger", val, err);
+}
+
+static int updateRocksdbDataMaxBytesForLevelMultiplier(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(DATA_CF, "max_bytes_for_level_multiplier", val, err) &&
+           updateRocksdbCFOptionNumber(SCORE_CF, "max_bytes_for_level_multiplier", val, err);
+}
+
+static int updateRocksdbMetaMaxBytesForLevelMultiplier(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(META_CF, "max_bytes_for_level_multiplier", val, err);
+}
+
+static int updateRocksdbDataWriteBufferSize(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(DATA_CF, "write_buffer_size", val, err) &&
+           updateRocksdbCFOptionNumber(SCORE_CF, "write_buffer_size", val, err);
+}
+
+static int updateRocksdbMetaWriteBufferSize(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(META_CF, "write_buffer_size", val, err);
+}
+
+static int updateRocksdbDataTargetFileSizeBase(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(DATA_CF, "target_file_size_base", val, err) &&
+           updateRocksdbCFOptionNumber(SCORE_CF, "target_file_size_base", val, err);
+}
+
+static int updateRocksdbMetaTargetFileSizeBase(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(META_CF, "target_file_size_base", val, err);
+}
+
+static int updateRocksdbDataMaxBytesForLevelBase(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(DATA_CF, "max_bytes_for_level_base", val, err) &&
+           updateRocksdbCFOptionNumber(SCORE_CF, "max_bytes_for_level_base", val, err);
+}
+
+static int updateRocksdbMetaMaxBytesForLevelBase(long long val, long long prev, const char **err) {
+    UNUSED(prev);
+    return updateRocksdbCFOptionNumber(META_CF, "max_bytes_for_level_base", val, err);
+}
+
+
 static int updateGoodSlaves(long long val, long long prev, const char **err) {
     UNUSED(val);
     UNUSED(prev);
     UNUSED(err);
     refreshGoodSlavesCount();
+    return 1;
+}
+
+static int isValidAppendonly(int val, const char **err) {
+    if (val && server.swap_mode != SWAP_MODE_MEMORY) {
+        *err = "swap mode is non memory mode, can't open aof";
+        return 0;
+    }
     return 1;
 }
 
@@ -2355,6 +2788,13 @@ static int updateOOMScoreAdj(int val, int prev, const char **err) {
     return 1;
 }
 
+static int isValidSwapMode(int val, const char **err) {
+    if (val != SWAP_MODE_MEMORY && server.aof_enabled) {
+        *err = "Failed to set current non memory mode, Check aof state.";
+        return 0;
+    } 
+    return 1;
+}
 
 int updateRequirePass(sds val, sds prev, const char **err) {
     UNUSED(prev);
@@ -2452,7 +2892,7 @@ standardConfig configs[] = {
     createBoolConfig("activedefrag", NULL, MODIFIABLE_CONFIG, server.active_defrag_enabled, 0, isValidActiveDefrag, NULL),
     createBoolConfig("syslog-enabled", NULL, IMMUTABLE_CONFIG, server.syslog_enabled, 0, NULL, NULL),
     createBoolConfig("cluster-enabled", NULL, IMMUTABLE_CONFIG, server.cluster_enabled, 0, NULL, NULL),
-    createBoolConfig("appendonly", NULL, MODIFIABLE_CONFIG, server.aof_enabled, 0, NULL, updateAppendonly),
+    createBoolConfig("appendonly", NULL, MODIFIABLE_CONFIG, server.aof_enabled, 0, isValidAppendonly, updateAppendonly),
     createBoolConfig("cluster-allow-reads-when-down", NULL, MODIFIABLE_CONFIG, server.cluster_allow_reads_when_down, 0, NULL, NULL),
     createBoolConfig("crash-log-enabled", NULL, MODIFIABLE_CONFIG, server.crashlog_enabled, 1, NULL, updateSighandlerEnabled),
     createBoolConfig("crash-memcheck-enabled", NULL, MODIFIABLE_CONFIG, server.memcheck_enabled, 1, NULL, NULL),
@@ -2461,6 +2901,26 @@ standardConfig configs[] = {
     createBoolConfig("cluster-allow-replica-migration", NULL, MODIFIABLE_CONFIG, server.cluster_allow_replica_migration, 1, NULL, NULL),
     createBoolConfig("replica-announced", NULL, MODIFIABLE_CONFIG, server.replica_announced, 1, NULL, NULL),
     createBoolConfig("slave-repl-all", NULL, MODIFIABLE_CONFIG, server.repl_slave_repl_all, 0, NULL, NULL),
+    createBoolConfig("swap-debug-trace-latency", NULL, MODIFIABLE_CONFIG, server.swap_debug_trace_latency, 0, NULL, NULL),
+    createBoolConfig("swap-cuckoo-filter-enabled", NULL, MODIFIABLE_CONFIG, server.swap_cuckoo_filter_enabled, 1, NULL, updateSwapCuckooFilterEnabled),
+    createBoolConfig("swap-absent-cache-enabled", NULL, MODIFIABLE_CONFIG, server.swap_absent_cache_enabled, 1, NULL, updateSwapAbsentCacheEnabled),
+    createBoolConfig("swap-absent-cache-include-subkey", NULL, MODIFIABLE_CONFIG, server.swap_absent_cache_include_subkey, 1, NULL, NULL),
+    createBoolConfig("swap-bgsave-fix-metalen-mismatch", NULL, MODIFIABLE_CONFIG, server.swap_bgsave_fix_metalen_mismatch, 0, NULL, NULL),
+    createBoolConfig("swap-dirty-subkeys-enabled", NULL, MODIFIABLE_CONFIG, server.swap_dirty_subkeys_enabled, 0, NULL, NULL),
+    createBoolConfig("swap-persist-enabled", NULL, IMMUTABLE_CONFIG, server.swap_persist_enabled, 0, NULL, NULL),
+    createBoolConfig("swap-repl-rordb-sync", NULL, MODIFIABLE_CONFIG, server.swap_repl_rordb_sync, 1, NULL, NULL),
+    createBoolConfig("rocksdb.data.cache_index_and_filter_blocks", "rocksdb.cache_index_and_filter_blocks", IMMUTABLE_CONFIG, server.rocksdb_data_cache_index_and_filter_blocks, 0, NULL, NULL),
+    createBoolConfig("rocksdb.meta.cache_index_and_filter_blocks", NULL, IMMUTABLE_CONFIG, server.rocksdb_meta_cache_index_and_filter_blocks, 0, NULL, NULL),
+    createBoolConfig("rocksdb.enable_pipelined_write", NULL, IMMUTABLE_CONFIG, server.rocksdb_enable_pipelined_write, 0, NULL, NULL),
+    createBoolConfig("rocksdb.data.disable_auto_compactions", "rocksdb.disable_auto_compactions", MODIFIABLE_CONFIG, server.rocksdb_data_disable_auto_compactions, 0, NULL, updateRocksdbDataDisableAutoCompactions),
+    createBoolConfig("rocksdb.meta.disable_auto_compactions", NULL, MODIFIABLE_CONFIG, server.rocksdb_meta_disable_auto_compactions, 0, NULL, updateRocksdbMetaDisableAutoCompactions),
+    createBoolConfig("rocksdb.data.compaction_dynamic_level_bytes", "rocksdb.compaction_dynamic_level_bytes", IMMUTABLE_CONFIG, server.rocksdb_data_compaction_dynamic_level_bytes, 0, NULL, NULL),
+    createBoolConfig("rocksdb.meta.compaction_dynamic_level_bytes", NULL, IMMUTABLE_CONFIG, server.rocksdb_meta_compaction_dynamic_level_bytes, 0, NULL, NULL),
+    createBoolConfig("rocksdb.data.enable_blob_files", "rocksdb.enable_blob_files", MODIFIABLE_CONFIG, server.rocksdb_data_enable_blob_files, 0, NULL, updateRocksdbDataEnableBlobFiles),
+    createBoolConfig("rocksdb.meta.enable_blob_files", NULL, MODIFIABLE_CONFIG, server.rocksdb_meta_enable_blob_files, 0, NULL, updateRocksdbMetaEnableBlobFiles),
+    createBoolConfig("rocksdb.data.enable_blob_garbage_collection", "rocksdb.enable_blob_garbage_collection", MODIFIABLE_CONFIG, server.rocksdb_data_enable_blob_garbage_collection, 0, NULL, updateRocksdbDataEnableBlobGarbageCollection),
+    createBoolConfig("rocksdb.meta.enable_blob_garbage_collection", NULL, MODIFIABLE_CONFIG, server.rocksdb_meta_enable_blob_garbage_collection, 0, NULL, updateRocksdbMetaEnableBlobGarbageCollection),
+ 
 
     /* String Configs */
     createStringConfig("aclfile", NULL, IMMUTABLE_CONFIG, ALLOW_EMPTY_STRING, server.acl_filename, "", NULL, NULL),
@@ -2493,10 +2953,16 @@ standardConfig configs[] = {
     createEnumConfig("oom-score-adj", NULL, MODIFIABLE_CONFIG, oom_score_adj_enum, server.oom_score_adj, OOM_SCORE_ADJ_NO, NULL, updateOOMScoreAdj),
     createEnumConfig("acl-pubsub-default", NULL, MODIFIABLE_CONFIG, acl_pubsub_default_enum, server.acl_pubsub_default, USER_FLAG_ALLCHANNELS, NULL, NULL),
     createEnumConfig("sanitize-dump-payload", NULL, MODIFIABLE_CONFIG, sanitize_dump_payload_enum, server.sanitize_dump_payload, SANITIZE_DUMP_NO, NULL, NULL),
+    createEnumConfig("swap-mode", NULL, IMMUTABLE_CONFIG, swap_mode_enum, server.swap_mode, SWAP_MODE_MEMORY, isValidSwapMode, NULL),
+    createEnumConfig("rocksdb.data.compression","rocksdb.compression", MODIFIABLE_CONFIG, rocksdb_compression_enum, server.rocksdb_data_compression, rocksdb_snappy_compression, NULL, updateRocksdbDataCompression),
+    createEnumConfig("rocksdb.meta.compression", NULL, MODIFIABLE_CONFIG, rocksdb_compression_enum, server.rocksdb_meta_compression, rocksdb_snappy_compression, NULL, updateRocksdbMetaCompression),
+    createEnumConfig("swap-cuckoo-filter-bit-per-key", NULL, IMMUTABLE_CONFIG, cuckoo_filter_bit_type_enum, server.swap_cuckoo_filter_bit_type, CUCKOO_FILTER_BITS_PER_TAG_8, NULL, NULL),
+    createEnumConfig("swap-ratelimit-policy", NULL, MODIFIABLE_CONFIG, swap_ratelimit_policy_enum, server.swap_ratelimit_policy, SWAP_RATELIMIT_POLICY_PAUSE, NULL, NULL),
 
     /* Integer configs */
     createIntConfig("databases", NULL, IMMUTABLE_CONFIG, 1, INT_MAX, server.dbnum, 16, INTEGER_CONFIG, NULL, NULL),
     createIntConfig("port", NULL, MODIFIABLE_CONFIG, 0, 65535, server.port, 6379, INTEGER_CONFIG, NULL, updatePort), /* TCP port. */
+    createIntConfig("ctrip-monitor-port", NULL, IMMUTABLE_CONFIG, 0, 65535, server.ctrip_monitor_port, 6380, INTEGER_CONFIG, NULL, NULL), /* Monitor TCP port. */
     createIntConfig("io-threads", NULL, IMMUTABLE_CONFIG, 1, 128, server.io_threads_num, 1, INTEGER_CONFIG, NULL, NULL), /* Single threaded by default */
     createIntConfig("auto-aof-rewrite-percentage", NULL, MODIFIABLE_CONFIG, 0, INT_MAX, server.aof_rewrite_perc, 100, INTEGER_CONFIG, NULL, NULL),
     createIntConfig("cluster-replica-validity-factor", "cluster-slave-validity-factor", MODIFIABLE_CONFIG, 0, INT_MAX, server.cluster_slave_validity_factor, 10, INTEGER_CONFIG, NULL, NULL), /* Slave max data age factor. */
@@ -2525,10 +2991,58 @@ standardConfig configs[] = {
     createIntConfig("rdb-key-save-delay", NULL, MODIFIABLE_CONFIG, INT_MIN, INT_MAX, server.rdb_key_save_delay, 0, INTEGER_CONFIG, NULL, NULL),
     createIntConfig("key-load-delay", NULL, MODIFIABLE_CONFIG, INT_MIN, INT_MAX, server.key_load_delay, 0, INTEGER_CONFIG, NULL, NULL),
     createIntConfig("active-expire-effort", NULL, MODIFIABLE_CONFIG, 1, 10, server.active_expire_effort, 1, INTEGER_CONFIG, NULL, NULL), /* From 1 to 10. */
+    createIntConfig("swap-slow-expire-effort", NULL, MODIFIABLE_CONFIG, -10, 10, server.swap_slow_expire_effort, -5, INTEGER_CONFIG, NULL, NULL),
     createIntConfig("hz", NULL, MODIFIABLE_CONFIG, 0, INT_MAX, server.config_hz, CONFIG_DEFAULT_HZ, INTEGER_CONFIG, NULL, updateHZ),
     createIntConfig("min-replicas-to-write", "min-slaves-to-write", MODIFIABLE_CONFIG, 0, INT_MAX, server.repl_min_slaves_to_write, 0, INTEGER_CONFIG, NULL, updateGoodSlaves),
     createIntConfig("min-replicas-max-lag", "min-slaves-max-lag", MODIFIABLE_CONFIG, 0, INT_MAX, server.repl_min_slaves_max_lag, 10, INTEGER_CONFIG, NULL, updateGoodSlaves),
-
+    createIntConfig("swap-debug-evict-keys", NULL, MODIFIABLE_CONFIG, -1, INT_MAX, server.swap_debug_evict_keys, 0, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("ps-parallism-rdb", NULL, MODIFIABLE_CONFIG, 4, 16384, server.ps_parallism_rdb, 32, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-evict-step-max-subkeys", NULL, MODIFIABLE_CONFIG, 0, 65536, server.swap_evict_step_max_subkeys, 1024, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-debug-rio-delay-micro", NULL, MODIFIABLE_CONFIG, -1, INT_MAX, server.swap_debug_rio_delay_micro, 0, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-threads", NULL, IMMUTABLE_CONFIG, 4, 64, server.swap_threads_num, 4, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("jemalloc-max-bg-threads", NULL, IMMUTABLE_CONFIG, 4, 16, server.jemalloc_max_bg_threads, 4, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-debug-swapout-notify-delay-micro", NULL, MODIFIABLE_CONFIG, -1, INT_MAX, server.swap_debug_swapout_notify_delay_micro, 0, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-debug-before-exec-swap-delay-micro", NULL, MODIFIABLE_CONFIG, 0, INT_MAX, server.swap_debug_before_exec_swap_delay_micro, 0, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-debug-init-rocksdb-delay-micro", NULL, MODIFIABLE_CONFIG, 0, INT_MAX, server.swap_debug_init_rocksdb_delay_micro, 0, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-debug-bgsave-metalen-addition", NULL, MODIFIABLE_CONFIG, INT_MIN, INT_MAX, server.swap_debug_bgsave_metalen_addition, 0, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-debug-compaction-filter-delay-micro", NULL, MODIFIABLE_CONFIG, 0, INT_MAX, server.swap_debug_compaction_filter_delay_micro, 0, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-debug-rdb-key-save-delay-micro", NULL, MODIFIABLE_CONFIG, -1, INT_MAX, server.swap_debug_rdb_key_save_delay_micro, 0, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-rocksdb-stats-collect-interval-ms", NULL, MODIFIABLE_CONFIG, 1, INT_MAX, server.swap_rocksdb_stats_collect_interval_ms, 2000, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-evict-inprogress-limit", NULL, MODIFIABLE_CONFIG, 4, INT_MAX, server.swap_evict_inprogress_limit, 128, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-evict-inprogress-growth-rate", NULL, MODIFIABLE_CONFIG, 1, INT_MAX, server.swap_evict_inprogress_growth_rate, 5*1024*1024, MEMORY_CONFIG, NULL, NULL),
+    createIntConfig("swap-evict-loop-check-interval", NULL, MODIFIABLE_CONFIG, 1, 1024, server.swap_evict_loop_check_interval, 8, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-ratelimit-maxmemory-percentage", NULL, MODIFIABLE_CONFIG, 100, INT_MAX, server.swap_ratelimit_maxmemory_percentage, 200, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-ratelimit-maxmemory-pause-growth-rate", NULL, MODIFIABLE_CONFIG, 1, INT_MAX, server.swap_ratelimit_maxmemory_pause_growth_rate, 20*1024*1024, MEMORY_CONFIG, NULL, NULL),
+    createIntConfig("swap-scan-session-bits", NULL, IMMUTABLE_CONFIG, 1, 16, server.swap_scan_session_bits, 7, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-scan-session-max-idle-seconds", NULL, MODIFIABLE_CONFIG, 1, INT_MAX, server.swap_scan_session_max_idle_seconds, 60, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-compaction-filter-skip-level", NULL, MODIFIABLE_CONFIG, -1, INT_MAX, server.swap_compaction_filter_skip_level, 0, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-ratelimit-persist-lag", NULL, MODIFIABLE_CONFIG, 1, INT_MAX, server.swap_ratelimit_persist_lag, 60, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-ratelimit-persist-pause-growth-rate", NULL, MODIFIABLE_CONFIG, 1, INT_MAX, server.swap_ratelimit_persist_pause_growth_rate, 10, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-persist-lag-millis", NULL, MODIFIABLE_CONFIG, 0, INT_MAX, server.swap_persist_lag_millis, 0, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-persist-inprogress-growth-rate", NULL, MODIFIABLE_CONFIG, 1, INT_MAX, server.swap_persist_inprogress_growth_rate, 500, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("swap-flush-meta-deletes-percentage", NULL, MODIFIABLE_CONFIG, 0, 100, server.swap_flush_meta_deletes_percentage, 40, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.max_open_files", NULL, IMMUTABLE_CONFIG, -1, INT_MAX, server.rocksdb_max_open_files, -1, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.data.max_write_buffer_number", "rocksdb.max_write_buffer_number", MODIFIABLE_CONFIG, 1, 256, server.rocksdb_data_max_write_buffer_number, 4, INTEGER_CONFIG, NULL, updateRocksdbDataMaxWriteBufferNumber),
+    createIntConfig("rocksdb.meta.max_write_buffer_number", NULL, MODIFIABLE_CONFIG, 1, 256, server.rocksdb_meta_max_write_buffer_number, 3, INTEGER_CONFIG, NULL, updateRocksdbMetaMaxWriteBufferNumber),
+    createIntConfig("rocksdb.max_background_compactions", NULL, IMMUTABLE_CONFIG, 1, 64, server.rocksdb_max_background_compactions, 2, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.max_background_flushes", NULL, IMMUTABLE_CONFIG, -1, 64, server.rocksdb_max_background_flushes, -1, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.max_background_jobs", NULL, IMMUTABLE_CONFIG, -1, 64, server.rocksdb_max_background_jobs, 2, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.max_subcompactions", NULL, IMMUTABLE_CONFIG, 1, 64, server.rocksdb_max_subcompactions, 1, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.data.block_size", "rocksdb.block_size", IMMUTABLE_CONFIG, 512, INT_MAX, server.rocksdb_data_block_size, 8192, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.meta.block_size", NULL, IMMUTABLE_CONFIG, 512, INT_MAX, server.rocksdb_meta_block_size, 8192, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.data.level0_slowdown_writes_trigger", "rocksdb.level0_slowdown_writes_trigger", MODIFIABLE_CONFIG, 1, INT_MAX, server.rocksdb_data_level0_slowdown_writes_trigger, 20, INTEGER_CONFIG, NULL, updateRocksdbDataLevel0SlowdownWritesTrigger),
+    createIntConfig("rocksdb.meta.level0_slowdown_writes_trigger", NULL, MODIFIABLE_CONFIG, 1, INT_MAX, server.rocksdb_meta_level0_slowdown_writes_trigger, 20, INTEGER_CONFIG, NULL, updateRocksdbMetaLevel0SlowdownWritesTrigger),
+    createIntConfig("rocksdb.data.max_bytes_for_level_multiplier", "rocksdb.max_bytes_for_level_multiplier", MODIFIABLE_CONFIG, 1, INT_MAX, server.rocksdb_data_max_bytes_for_level_multiplier, 10, INTEGER_CONFIG, NULL, updateRocksdbDataMaxBytesForLevelMultiplier),
+    createIntConfig("rocksdb.meta.max_bytes_for_level_multiplier", NULL, MODIFIABLE_CONFIG, 1, INT_MAX, server.rocksdb_meta_max_bytes_for_level_multiplier, 10, INTEGER_CONFIG, NULL, updateRocksdbMetaMaxBytesForLevelMultiplier),
+    createIntConfig("rocksdb.data.suggest_compact_deletion_percentage", "rocksdb.suggest_compact_deletion_percentage", IMMUTABLE_CONFIG, 0, 100, server.rocksdb_data_suggest_compact_deletion_percentage, 95, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.meta.suggest_compact_deletion_percentage", NULL, IMMUTABLE_CONFIG, 0, 100, server.rocksdb_meta_suggest_compact_deletion_percentage, 95, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.WAL_ttl_seconds", NULL, IMMUTABLE_CONFIG, 0, INT_MAX, server.rocksdb_WAL_ttl_seconds, 18000, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.WAL_size_limit_MB", NULL, IMMUTABLE_CONFIG, 0, INT_MAX, server.rocksdb_WAL_size_limit_MB, 16384, INTEGER_CONFIG, NULL, NULL),
+    createIntConfig("rocksdb.data.blob_garbage_collection_age_cutoff_percentage", "rocksdb.blob_garbage_collection_age_cutoff_percentage", MODIFIABLE_CONFIG, 0, INT_MAX, server.rocksdb_data_blob_garbage_collection_age_cutoff_percentage, 5, INTEGER_CONFIG, NULL, updateRocksdbDataBlobGarbageCollectionAgeCutoffPercentage),
+    createIntConfig("rocksdb.meta.blob_garbage_collection_age_cutoff_percentage", NULL, MODIFIABLE_CONFIG, 0, INT_MAX, server.rocksdb_meta_blob_garbage_collection_age_cutoff_percentage, 5, INTEGER_CONFIG, NULL, updateRocksdbMetaBlobGarbageCollectionAgeCutoffPercentage),
+    createIntConfig("rocksdb.data.blob_garbage_collection_force_threshold_percentage", "rocksdb.blob_garbage_collection_force_threshold_percentage", MODIFIABLE_CONFIG, 0, INT_MAX, server.rocksdb_data_blob_garbage_collection_force_threshold_percentage, INTEGER_CONFIG, 90, NULL, updateRocksdbDataBlobGarbageCollectionForceThresholdPercentage),
+    createIntConfig("rocksdb.meta.blob_garbage_collection_force_threshold_percentage", NULL, MODIFIABLE_CONFIG, 0, INT_MAX, server.rocksdb_meta_blob_garbage_collection_force_threshold_percentage, INTEGER_CONFIG, 90, NULL, updateRocksdbMetaBlobGarbageCollectionForceThresholdPercentage),
+ 
     /* Unsigned int configs */
     createUIntConfig("maxclients", NULL, MODIFIABLE_CONFIG, 1, UINT_MAX, server.maxclients, 10000, INTEGER_CONFIG, NULL, updateMaxclients),
 
@@ -2548,7 +3062,40 @@ standardConfig configs[] = {
 
     /* Unsigned Long Long configs */
     createULongLongConfig("maxmemory", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.maxmemory, 0, MEMORY_CONFIG, NULL, updateMaxmemory),
+    createULongLongConfig("maxmemory-scaledown-rate", NULL, MODIFIABLE_CONFIG, 1, ULLONG_MAX, server.maxmemory_scaledown_rate, 1024*1024, MEMORY_CONFIG, NULL, NULL),
+    createULongLongConfig("swap-max-db-size", NULL, MODIFIABLE_CONFIG, 0, LLONG_MAX, server.swap_max_db_size, 0, MEMORY_CONFIG, NULL, NULL),
+    createULongLongConfig("swap-evict-step-max-memory", NULL, MODIFIABLE_CONFIG, 0, LLONG_MAX, server.swap_evict_step_max_memory, 1*1024*1024, MEMORY_CONFIG, NULL, NULL), /* Default: 1mb */
+    createULongLongConfig("swap-repl-max-rocksdb-read-bps", NULL, MODIFIABLE_CONFIG, 0, LLONG_MAX, server.swap_repl_max_rocksdb_read_bps, 0, MEMORY_CONFIG, NULL, NULL), /* Default: unlimited */
+    createULongLongConfig("swap-cuckoo-filter-estimated-keys", NULL, IMMUTABLE_CONFIG, 1, LLONG_MAX, server.swap_cuckoo_filter_estimated_keys, 32000000, INTEGER_CONFIG, NULL, NULL), /* Default: 32M */
+    createULongLongConfig("swap-absent-cache-capacity", NULL, MODIFIABLE_CONFIG, 1, LLONG_MAX, server.swap_absent_cache_capacity, 64*1024, INTEGER_CONFIG, NULL, updateSwapAbsentCacheCapacity), /* Default: 64k */
+    createULongLongConfig("swap-compaction-filter-disable-until", NULL, MODIFIABLE_CONFIG, 0, LLONG_MAX, server.swap_compaction_filter_disable_until, 0, INTEGER_CONFIG, NULL, NULL),
+    createULongLongConfig("swap-flush-meta-deletes-num", NULL, MODIFIABLE_CONFIG, 1, LLONG_MAX, server.swap_flush_meta_deletes_num, 200000, INTEGER_CONFIG, NULL, NULL),
+    createULongLongConfig("rocksdb.data.block_cache_size", "rocksdb.block_cache_size", IMMUTABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_data_block_cache_size, 8*1024*1024, MEMORY_CONFIG, NULL, NULL),
+    createULongLongConfig("rocksdb.meta.block_cache_size", NULL, IMMUTABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_meta_block_cache_size, 512*1024*1024, MEMORY_CONFIG, NULL, NULL),
+    createULongLongConfig("rocksdb.data.write_buffer_size", "rocksdb.write_buffer_size", MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_data_write_buffer_size, 64*1024*1024, MEMORY_CONFIG, NULL, updateRocksdbDataWriteBufferSize),
+    createULongLongConfig("rocksdb.meta.write_buffer_size", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_meta_write_buffer_size, 64*1024*1024, MEMORY_CONFIG, NULL, updateRocksdbMetaWriteBufferSize),
+    createULongLongConfig("rocksdb.data.target_file_size_base", "rocksdb.target_file_size_base", MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_data_target_file_size_base, 32*1024*1024, MEMORY_CONFIG, NULL, updateRocksdbDataTargetFileSizeBase),
+    createULongLongConfig("rocksdb.meta.target_file_size_base", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_meta_target_file_size_base, 32*1024*1024, MEMORY_CONFIG, NULL, updateRocksdbMetaTargetFileSizeBase),
+    createULongLongConfig("rocksdb.ratelimiter.rate_per_sec", NULL, IMMUTABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_ratelimiter_rate_per_sec, 512*1024*1024, MEMORY_CONFIG, NULL, NULL),
+    createULongLongConfig("rocksdb.bytes_per_sync", NULL, IMMUTABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_bytes_per_sync, 1*1024*1024, MEMORY_CONFIG, NULL, NULL),
+    createULongLongConfig("rocksdb.data.max_bytes_for_level_base", "rocksdb.max_bytes_for_level_base", MODIFIABLE_CONFIG, 1*1024*1024, ULLONG_MAX, server.rocksdb_data_max_bytes_for_level_base, 512*1024*1024, MEMORY_CONFIG, NULL, updateRocksdbDataMaxBytesForLevelBase),
+    createULongLongConfig("rocksdb.meta.max_bytes_for_level_base", NULL, MODIFIABLE_CONFIG, 1*1024*1024, ULLONG_MAX, server.rocksdb_meta_max_bytes_for_level_base, 256*1024*1024, MEMORY_CONFIG, NULL, updateRocksdbMetaMaxBytesForLevelBase),
+    createULongLongConfig("rocksdb.data.periodic_compaction_seconds", "rocksdb.periodic_compaction_seconds", MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_data_periodic_compaction_seconds, 86400, MEMORY_CONFIG, NULL, updateRocksdbDataCompactPeriod),
+    createULongLongConfig("rocksdb.meta.periodic_compaction_seconds", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_meta_periodic_compaction_seconds, 30*86400, MEMORY_CONFIG, NULL, updateRocksdbMetaCompactPeriod),
+    createULongLongConfig("rocksdb.data.suggest_compact_sliding_window_size", "rocksdb.suggest_compact_sliding_window_size", IMMUTABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_data_suggest_compact_sliding_window_size, 100000, INTEGER_CONFIG, NULL, NULL),
+    createULongLongConfig("rocksdb.meta.suggest_compact_sliding_window_size", NULL, IMMUTABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_meta_suggest_compact_sliding_window_size, 100000, INTEGER_CONFIG, NULL, NULL),
+    createULongLongConfig("rocksdb.data.suggest_compact_num_dels_trigger", "rocksdb.suggest_compact_num_dels_trigger", IMMUTABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_data_suggest_compact_num_dels_trigger, 80000, INTEGER_CONFIG, NULL, NULL),
+    createULongLongConfig("rocksdb.meta.suggest_compact_num_dels_trigger", NULL, IMMUTABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_meta_suggest_compact_num_dels_trigger, 80000, INTEGER_CONFIG, NULL, NULL),
+
+    createULongLongConfig("rocksdb.max_total_wal_size", NULL, IMMUTABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_max_total_wal_size, 512*1024*1024, MEMORY_CONFIG, NULL, NULL),
     createULongLongConfig("gtid-uuid-gap-max-memory", NULL, MODIFIABLE_CONFIG, 1024, ULLONG_MAX, server.gtid_uuid_gap_max_memory, 1*1024*1024, MEMORY_CONFIG, NULL, NULL),
+
+    createULongLongConfig("rocksdb.data.min_blob_size", "rocksdb.min_blob_size", MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_data_min_blob_size, 4096, MEMORY_CONFIG, NULL, updateRocksdbDataMinBlobSize),
+    createULongLongConfig("rocksdb.meta.min_blob_size", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_meta_min_blob_size, 4096, MEMORY_CONFIG, NULL, updateRocksdbMetaMinBlobSize),
+    createULongLongConfig("rocksdb.data.blob_file_size", "rocksdb.blob_file_size", MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_data_blob_file_size, 256*1024*1024, MEMORY_CONFIG, NULL, updateRocksdbDataBlobFileSize),
+    createULongLongConfig("rocksdb.meta.blob_file_size", NULL, MODIFIABLE_CONFIG, 0, ULLONG_MAX, server.rocksdb_meta_blob_file_size, 256*1024*1024, MEMORY_CONFIG, NULL, updateRocksdbMetaBlobFileSize),
+    createULongLongConfig("swap-repl-rordb-max-write-bps", NULL, MODIFIABLE_CONFIG, 0, LLONG_MAX, server.swap_repl_rordb_max_write_bps, 200*1024*1024, MEMORY_CONFIG, NULL, NULL),
+
 
     /* Size_t configs */
     createSizeTConfig("hash-max-ziplist-entries", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.hash_max_ziplist_entries, 512, INTEGER_CONFIG, NULL, NULL),
@@ -2565,7 +3112,7 @@ standardConfig configs[] = {
     /* Other configs */
     createTimeTConfig("repl-backlog-ttl", NULL, MODIFIABLE_CONFIG, 0, LONG_MAX, server.repl_backlog_time_limit, 60*60, INTEGER_CONFIG, NULL, NULL), /* Default: 1 hour */
     createOffTConfig("auto-aof-rewrite-min-size", NULL, MODIFIABLE_CONFIG, 0, LLONG_MAX, server.aof_rewrite_min_size, 64*1024*1024, MEMORY_CONFIG, NULL, NULL),
-    
+
     /* ctrip configs */
     createBoolConfig("gtid-enabled", NULL, MODIFIABLE_CONFIG, server.gtid_enabled, 0, NULL, updateGtidEnabled),
     createBoolConfig("gtid-enabled-config-sync-with-master", NULL, MODIFIABLE_CONFIG, server.gtid_enabled_config_sync_with_master, 1, NULL, NULL),
@@ -2623,6 +3170,8 @@ NULL
 
         addReplyHelp(c, help);
     } else if (!strcasecmp(c->argv[1]->ptr,"set") && c->argc == 4) {
+        serverLog(LL_NOTICE,"config item %s updated to %s by client: %s",
+                (sds)c->argv[2]->ptr,(sds)c->argv[3]->ptr,getClientPeerId(c));
         configSetCommand(c);
     } else if (!strcasecmp(c->argv[1]->ptr,"get") && c->argc == 3) {
         configGetCommand(c);

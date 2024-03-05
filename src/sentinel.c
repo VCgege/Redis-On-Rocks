@@ -2312,6 +2312,8 @@ void sentinelFlushConfig(void) {
     int fd = -1;
     int saved_hz = server.hz;
     int rewrite_status;
+    struct stat fileInfo;
+    mstime_t mtime;
 
     server.hz = CONFIG_DEFAULT_HZ;
     rewrite_status = rewriteConfig(server.configfile, 0);
@@ -2320,6 +2322,9 @@ void sentinelFlushConfig(void) {
     if (rewrite_status == -1) goto werr;
     if ((fd = open(server.configfile,O_RDONLY)) == -1) goto werr;
     if (fsync(fd) == -1) goto werr;
+    if (fstat(fd, &fileInfo) == -1) goto werr;
+    mtime = fileInfo.st_mtime * 1000;
+    sentinel.previous_flush_time = mtime;
     if (close(fd) == EOF) goto werr;
     return;
 
@@ -5123,33 +5128,17 @@ void sentinelCheckTiltCondition(void) {
     sentinel.previous_time = mstime();
 }
 
+mstime_t getSentinelPreviousFlushTime(void) {
+    return sentinel.previous_flush_time;
+}
+
 void sentinelFlushConfigIfNeeded(void) {
-    int fd = -1;
-    struct stat fileInfo;
-    mstime_t mtime;
-
-    if ((fd = open(server.configfile, O_RDONLY)) == -1) goto werr;
-    if (fstat(fd, &fileInfo) == -1) goto werr;
-    mtime = fileInfo.st_mtime * 1000;
-
-    if (sentinel.need_flush_config || mtime != sentinel.previous_flush_time) {
-    #ifndef REDIS_TEST
+    if (sentinel.need_flush_config) {
         sentinelFlushConfig();
-    #endif
         serverLog(LL_WARNING, "FlushConfig: flush config counter: %d",
             sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
-        if (fstat(fd, &fileInfo) == -1) goto werr;
-        sentinel.previous_flush_time = fileInfo.st_mtime * 1000;
     }
-    if (fd != -1) close(fd);
-    return;
-    
-werr:
-    serverLog(LL_WARNING, 
-        "WARNING: Sentinel was not able to save the new configuration on disk!!!: %s",
-        strerror(errno));    
-    if (fd != -1) close(fd);
 }
 
 void sentinelTimer(void) {
@@ -5242,28 +5231,6 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         ri->failover_delay_logged = old_delay_log;
         sentinelStartFailoverIfNeeded(ri);
         serverAssert(ri->failover_delay_logged != old_delay_log);
-    }
-
-    TEST("sentinelFlushConfigIfNeeded") {
-        int fd = -1;
-        struct stat fileInfo;
-        serverAssert(sentinel.previous_flush_time == 0);
-        
-        // when need flush config
-        sentinel.need_flush_config++;
-        sentinelFlushConfigIfNeeded();
-        if ((fd = open(server.configfile, O_RDONLY)) == -1) return -1;
-        if (fstat(fd, &fileInfo) == -1) return -1;
-        if (fd != -1) close(fd);
-        mstime_t mtime = fileInfo.st_mtime * 1000;
-        serverAssert(sentinel.previous_flush_time == mtime);
-        serverAssert(sentinel.need_flush_config == 0);
-
-        // when changed config
-        sentinel.previous_flush_time -= 1;
-        sentinelFlushConfigIfNeeded();
-        serverAssert(sentinel.previous_flush_time == mtime);
-        if (fd != -1) close(fd);
     }
 
     TEST("sentinelVoteLeader") {
