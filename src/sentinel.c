@@ -5252,7 +5252,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         mstime_t mtime = fileInfo.st_mtime * 1000;
         serverAssert(sentinel.previous_flush_time == mtime);
         serverAssert(sentinel.need_flush_config == 0);
-        printf("previous: %lld", sentinel.previous_flush_time);
+        printf("previous: %lld\n", sentinel.previous_flush_time);
 
         // when changed config
         sentinel.previous_flush_time -= 1;
