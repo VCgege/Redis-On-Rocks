@@ -5122,7 +5122,7 @@ void sentinelFlushConfigIfNeeded(void) {
     int fd = -1;
     struct stat fileInfo;
 
-    if ((fd = open(server.configfile,O_RDONLY)) == -1) goto werr;
+    if ((fd = open(server.configfile, O_RDONLY)) == -1) goto werr;
 
     if (fstat(fd, &fileInfo) == -1) goto werr;
     mstime_t mtime = fileInfo.st_mtime * 1000;
@@ -5131,7 +5131,8 @@ void sentinelFlushConfigIfNeeded(void) {
     #ifndef REDIS_TEST
         sentinelFlushConfig();
     #endif
-        serverLog(LL_WARNING, "FlushConfig: flush config counter: %d", sentinel.need_flush_config);
+        serverLog(LL_WARNING, "FlushConfig: flush config counter: %d",
+            sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
         if (fstat(server.configfile, &fileInfo) == -1) goto werr;
         sentinel.previous_flush_time = fileInfo.st_mtime * 1000;
@@ -5144,7 +5145,6 @@ werr:
         "WARNING: Sentinel was not able to save the new configuration on disk!!!: %s",
         strerror(errno));    
     if (fd != -1) close(fd);
-    
 }
 
 void sentinelTimer(void) {
@@ -5239,13 +5239,17 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     }
 
     TEST("sentinelFlushConfigIfNeeded") {
+        int fd = -1;
+        struct stat fileInfo;
+
+        if ((fd = open(server.configfile, O_RDONLY)) == -1) goto werr;
         struct stat fileInfo;
         serverAssert(sentinel.previous_flush_time == 0);
         
         // when need flush config
         sentinel.need_flush_config++;
         sentinelFlushConfigIfNeeded();
-        if (fstat(server.configfile, &fileInfo) == -1) goto werr;
+        if (fstat(fd, &fileInfo) == -1) goto werr;
         mstime_t mtime = fileInfo.st_mtime * 1000;
         serverAssert(sentinel.previous_flush_time == mtime);
         serverAssert(sentinel.need_flush_config == 0);
@@ -5254,12 +5258,15 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         // when changed config
         sentinel.previous_flush_time -= 1;
         sentinelFlushConfigIfNeeded();
-        if (fstat(server.configfile, &fileInfo) == -1) goto werr;
+        if (fstat(fd, &fileInfo) == -1) goto werr;
         mtime = fileInfo.st_mtime * 1000;
         serverAssert(sentinel.previous_flush_time == mtime);
 
     werr:
-        serverLog(LL_WARNING,"WARNING: Sentinel was not able to save the new configuration on disk!!!: %s", strerror(errno));
+        serverLog(LL_WARNING, 
+            "WARNING: Sentinel was not able to save the new configuration on disk!!!: %s",
+            strerror(errno));    
+        if (fd != -1) close(fd);
     }
 
     TEST("sentinelVoteLeader") {
