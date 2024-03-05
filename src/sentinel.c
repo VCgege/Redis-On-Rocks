@@ -40,6 +40,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 
 extern char **environ;
@@ -5119,7 +5120,7 @@ void sentinelCheckTiltCondition(void) {
 
 void sentinelFlushConfigIfNeeded(void) {
     struct stat fileInfo;
-    if (stat(server.configfile, &fileInfo) == -1) goto werr;
+    if (fstat(server.configfile, &fileInfo) == -1) goto werr;
     mstime_t mtime = fileInfo.st_mtime * 1000;
 
     if (sentinel.need_flush_config || mtime != sentinel.previous_flush_time) {
@@ -5128,7 +5129,7 @@ void sentinelFlushConfigIfNeeded(void) {
     #endif
         serverLog(LL_WARNING, "FlushConfig: flush config counter: %d", sentinel.need_flush_config);
         sentinel.need_flush_config = 0;
-        if (stat(server.configfile, &fileInfo) == -1) goto werr;
+        if (fstat(server.configfile, &fileInfo) == -1) goto werr;
         sentinel.previous_flush_time = fileInfo.st_mtime * 1000;
         return;
     }
@@ -5177,7 +5178,6 @@ int sentinelTest(int argc, char *argv[], int accurate) {
     initSentinel();
     getRandomHexChars(sentinel.myid, CONFIG_RUN_ID_SIZE);
     FILE* temp_file = fopen("temp.conf", "w");
-    fwrite(str, sizeof(char), strlen(str), temp_file);
     fclose(temp_file);
     server.configfile = "temp.conf";
 
@@ -5238,7 +5238,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         // when need flush config
         sentinel.need_flush_config++;
         sentinelFlushConfigIfNeeded();
-        if (stat(server.configfile, &fileInfo) == -1) goto werr;
+        if (fstat(server.configfile, &fileInfo) == -1) goto werr;
         mstime_t mtime = fileInfo.st_mtime * 1000;
         serverAssert(sentinel.previous_flush_time == mtime);
         serverAssert(sentinel.need_flush_config == 0);
@@ -5247,7 +5247,7 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         // when changed config
         sentinel.previous_flush_time -= 1;
         sentinelFlushConfigIfNeeded();
-        if (stat(server.configfile, &fileInfo) == -1) goto werr;
+        if (fstat(server.configfile, &fileInfo) == -1) goto werr;
         mtime = fileInfo.st_mtime * 1000;
         serverAssert(sentinel.previous_flush_time == mtime);
 
