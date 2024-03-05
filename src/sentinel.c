@@ -2316,7 +2316,7 @@ void sentinelFlushConfig(void) {
     mstime_t mtime;
 
     server.hz = CONFIG_DEFAULT_HZ;
-    rewrite_status = rewriteConfig(server.configfile, 0);
+    rewrite_status = sentinelRewriteConfig(server.configfile, 0);
     server.hz = saved_hz;
 
     if (rewrite_status == -1) goto werr;
@@ -2336,7 +2336,7 @@ werr:
 
 /* If last flush was trigger by sentinelFlushConfig, previous_flush_time will 
  * be unchanged and do not need to read disk again. */
-struct rewriteConfigState *sentinelRewriteConfigReadOldFileIfNeeded(char *path) {
+int sentinelRewriteConfig(char *path, int force_all) {
     int fd = -1;
     struct stat fileInfo;
     mstime_t mtime;
@@ -2347,14 +2347,14 @@ struct rewriteConfigState *sentinelRewriteConfigReadOldFileIfNeeded(char *path) 
     mtime = fileInfo.st_mtime * 1000;
 
     if (mtime == sentinel.previous_flush_time) {
-        return initRewriteConfigState();
+        return rewriteConfigNotReadOld();
     }
-    return rewriteConfigReadOldFile(path);
+    return rewriteConfig(path);
 
 werr:
     serverLog(LL_WARNING,"WARNING: Sentinel was not able to read from disk!!!: %s", strerror(errno));
     if (fd != -1) close(fd);
-    return NULL;
+    return -1;
 }
 
 /* ====================== hiredis connection handling ======================= */

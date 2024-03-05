@@ -1075,7 +1075,6 @@ void dictListDestructor(void *privdata, void *val);
 /* Sentinel config rewriting is implemented inside sentinel.c by
  * rewriteConfigSentinelOption(). */
 void rewriteConfigSentinelOption(struct rewriteConfigState *state);
-struct rewriteConfigState *sentinelRewriteConfigReadOldFileIfNeeded(char *path);
 
 dictType optionToLineDictType = {
     dictSdsCaseHash,            /* hash function */
@@ -1690,16 +1689,25 @@ cleanup:
  * written. This is currently only used for testing purposes.
  *
  * On error -1 is returned and errno is set accordingly, otherwise 0. */
+
 int rewriteConfig(char *path, int force_all) {
+    return rewriteConfigOptional(path, force_all, 1);
+}
+
+int rewriteConfigNotReadOld(char *path, int force_all) {
+    return rewriteConfigOptional(path, force_all, 0);
+}
+
+int rewriteConfigOptional(char *path, int force_all, int read_old_file) {
     struct rewriteConfigState *state;
     sds newcontent;
     int retval;
 
-    /* Step 1: read the old config into our rewrite state. */
-    if (server.sentinel_mode) {
-        state = sentinelRewriteConfigReadOldFileIfNeeded(path);
-    } else {
+    /* Step 1: read the old config into our rewrite state. Or just init state.*/
+    if (read_old_file) {
         state = rewriteConfigReadOldFile(path); 
+    } else {
+        state = initRewriteConfigState();
     }
     if (state == NULL) return -1;
     if (force_all) state->force_all = 1;

@@ -2347,9 +2347,9 @@ struct rewriteConfigState; /* Forward declaration to export API. */
 void rewriteConfigRewriteLine(struct rewriteConfigState *state, const char *option, sds line, int force);
 void rewriteConfigMarkAsProcessed(struct rewriteConfigState *state, const char *option);
 int rewriteConfig(char *path, int force_all);
+int rewriteConfigNotReadOld(char *path, int force_all);
+int rewriteConfigOptional(char *path, int force_all, int read_old_file);
 void initConfigValues();
-struct rewriteConfigState *initRewriteConfigState(void);
-struct rewriteConfigState *rewriteConfigReadOldFile(char *path);
 
 /* db.c -- Keyspace access API */
 int removeExpire(redisDb *db, robj *key);
