@@ -5130,8 +5130,8 @@ void sentinelFlushConfigIfNeeded(void) {
 
     if (fstat(fd, &fileInfo) == -1) goto werr;
     mstime_t mtime = fileInfo.st_mtime * 1000;
-    printf("previous: %lld\n", sentinel.previous_flush_time);
-    printf("mtime: %lld\n", mtime);
+    printf("--previous: %lld\n", sentinel.previous_flush_time);
+    printf("--mtime: %lld\n", mtime);
 
     if (sentinel.need_flush_config || mtime != sentinel.previous_flush_time) {
     #ifndef REDIS_TEST
@@ -5254,9 +5254,6 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         sentinelFlushConfigIfNeeded();
         if ((fd = open(server.configfile, O_RDONLY)) == -1) goto werr;
         if (fstat(fd, &fileInfo) == -1) goto werr;
-        if (fstat(fd, &fileInfo) == -1) goto werr2;
-        if (fstat(fd, &fileInfo) == -1) goto werr3;
-        if (fstat(fd, &fileInfo) == -1) goto werr4;
         if (fd != -1) close(fd);
         mstime_t mtime = fileInfo.st_mtime * 1000;
         serverAssert(sentinel.previous_flush_time == mtime);
@@ -5267,29 +5264,14 @@ int sentinelTest(int argc, char *argv[], int accurate) {
         sentinel.previous_flush_time -= 1;
         sentinelFlushConfigIfNeeded();
         serverAssert(sentinel.previous_flush_time == mtime);
+        printf("previous now: %lld\n", sentinel.previous_flush_time);
         if (fd != -1) close(fd);
 
     werr:
         serverLog(LL_WARNING, 
             "WARNING: Sentinel was not able to save the new configuration on disk!!!: %s",
             strerror(errno));    
-        if (fd != -1) close(fd);
-        return 0;
-    werr2:
-        serverLog(LL_WARNING, 
-            "WARNING: werr2: %s",
-            strerror(errno)); 
-        return 0;   
-    werr3:
-        serverLog(LL_WARNING, 
-            "WARNING: werr3: %s",
-            strerror(errno)); 
-        return 0;   
-    werr4:
-        serverLog(LL_WARNING, 
-            "WARNING: werr4: %s",
-            strerror(errno)); 
-        return 0;   
+        if (fd != -1) close(fd);  
     }
 
     TEST("sentinelVoteLeader") {
