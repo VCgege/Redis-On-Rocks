@@ -1075,7 +1075,7 @@ void dictListDestructor(void *privdata, void *val);
 /* Sentinel config rewriting is implemented inside sentinel.c by
  * rewriteConfigSentinelOption(). */
 void rewriteConfigSentinelOption(struct rewriteConfigState *state);
-mstime_t getSentinelPreviousFlushTime(void);
+struct rewriteConfigState *sentinelRewriteConfigReadOldFileIfNeeded(char *path);
 
 dictType optionToLineDictType = {
     dictSdsCaseHash,            /* hash function */
@@ -1136,38 +1136,32 @@ void rewriteConfigMarkAsProcessed(struct rewriteConfigState *state, const char *
     if (dictAdd(state->rewritten,opt,NULL) != DICT_OK) sdsfree(opt);
 }
 
+/* Init rewriteConfigState */
+struct rewriteConfigState *initRewriteConfigState(void) {
+    struct rewriteConfigState *state = zmalloc(sizeof(*state));
+        state->option_to_line = dictCreate(&optionToLineDictType,NULL);
+        state->rewritten = dictCreate(&optionSetDictType,NULL);
+        state->numlines = 0;
+        state->lines = NULL;
+        state->has_tail = 0;
+        state->force_all = 0;
+    return state;
+}
+
 /* Read the old file, split it into lines to populate a newly created
  * config rewrite state, and return it to the caller.
  *
  * If it is impossible to read the old file, NULL is returned.
  * If the old file does not exist at all, an empty state is returned. */
 struct rewriteConfigState *rewriteConfigReadOldFile(char *path) {
-    
     FILE *fp = fopen(path,"r");
     if (fp == NULL && errno != ENOENT) return NULL;
 
     char buf[CONFIG_MAX_LINE+1];
     int linenum = -1;
-    struct stat fileInfo;
-    mstime_t mtime;
-    struct rewriteConfigState *state = zmalloc(sizeof(*state));
-    state->option_to_line = dictCreate(&optionToLineDictType,NULL);
-    state->rewritten = dictCreate(&optionSetDictType,NULL);
-    state->numlines = 0;
-    state->lines = NULL;
-    state->has_tail = 0;
-    state->force_all = 0;
+    
+    struct rewriteConfigState *state = initRewriteConfigState();
     if (fp == NULL) return state;
-    if (server.sentinel_mode) {
-        fstat(fileno(fp), &fileInfo);
-        mtime = fileInfo.st_mtime * 1000;
-        if (mtime == getSentinelPreviousFlushTime()) {
-            return state;
-        }
-         serverLog(LL_WARNING,
-            "mtime : %lld, pre : %lld",
-            (unsigned long long)mtime, (unsigned long long)getSentinelPreviousFlushTime());
-    }
 
     /* Read the old file line by line, populate the state. */
     while(fgets(buf,CONFIG_MAX_LINE+1,fp) != NULL) {
@@ -1187,7 +1181,6 @@ struct rewriteConfigState *rewriteConfigReadOldFile(char *path) {
 
         /* Not a comment, split into arguments. */
         argv = sdssplitargs(line,&argc);
-
         if (argv == NULL) {
             /* Apparently the line is unparsable for some reason, for
              * instance it may have unbalanced quotes. Load it as a
@@ -1704,7 +1697,12 @@ int rewriteConfig(char *path, int force_all) {
     int retval;
 
     /* Step 1: read the old config into our rewrite state. */
-    if ((state = rewriteConfigReadOldFile(path)) == NULL) return -1;
+    if (server.sentinel_mode) {
+        state = sentinelRewriteConfigReadOldFileIfNeeded(path);
+    } else {
+        state = rewriteConfigReadOldFile(path); 
+    }
+    if (state == NULL) return -1;
     if (force_all) state->force_all = 1;
 
     /* Step 2: rewrite every single option, replacing or appending it inside
@@ -2541,7 +2539,7 @@ standardConfig configs[] = {
     createIntConfig("hz", NULL, MODIFIABLE_CONFIG, 0, INT_MAX, server.config_hz, CONFIG_DEFAULT_HZ, INTEGER_CONFIG, NULL, updateHZ),
     createIntConfig("min-replicas-to-write", "min-slaves-to-write", MODIFIABLE_CONFIG, 0, INT_MAX, server.repl_min_slaves_to_write, 0, INTEGER_CONFIG, NULL, updateGoodSlaves),
     createIntConfig("min-replicas-max-lag", "min-slaves-max-lag", MODIFIABLE_CONFIG, 0, INT_MAX, server.repl_min_slaves_max_lag, 10, INTEGER_CONFIG, NULL, updateGoodSlaves),
-    
+
     /* Unsigned int configs */
     createUIntConfig("maxclients", NULL, MODIFIABLE_CONFIG, 1, UINT_MAX, server.maxclients, 10000, INTEGER_CONFIG, NULL, updateMaxclients),
 

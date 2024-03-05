@@ -2322,6 +2322,7 @@ void sentinelFlushConfig(void) {
     if (rewrite_status == -1) goto werr;
     if ((fd = open(server.configfile,O_RDONLY)) == -1) goto werr;
     if (fsync(fd) == -1) goto werr;
+    // save new flush time;
     if (fstat(fd, &fileInfo) == -1) goto werr;
     mtime = fileInfo.st_mtime * 1000;
     sentinel.previous_flush_time = mtime;
@@ -2331,6 +2332,25 @@ void sentinelFlushConfig(void) {
 werr:
     serverLog(LL_WARNING,"WARNING: Sentinel was not able to save the new configuration on disk!!!: %s", strerror(errno));
     if (fd != -1) close(fd);
+}
+
+/* If last flush was trigger by sentinelFlushConfig, config will 
+ * be unchanged and do not need to read again. 
+ */
+struct rewriteConfigState *sentinelRewriteConfigReadOldFileIfNeeded(char *path) {
+    int fd = -1;
+    struct stat fileInfo;
+    mstime_t mtime;
+
+    if ((fd = open(server.configfile, O_RDONLY)) == -1) goto werr;
+    if (fstat(fd, &fileInfo) == -1) goto werr;
+    if (fd != -1) close(fd);
+    mtime = fileInfo.st_mtime * 1000;
+
+    if (mtime == sentinel.previous_flush_time) {
+        return initRewriteConfigState();
+    }
+    return rewriteConfigReadOldFile(path);
 }
 
 /* ====================== hiredis connection handling ======================= */
@@ -5126,10 +5146,6 @@ void sentinelCheckTiltCondition(void) {
         sentinelEvent(LL_WARNING,"+tilt",NULL,"#tilt mode entered");
     }
     sentinel.previous_time = mstime();
-}
-
-mstime_t getSentinelPreviousFlushTime(void) {
-    return sentinel.previous_flush_time;
 }
 
 void sentinelFlushConfigIfNeeded(void) {
