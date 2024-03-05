@@ -2886,7 +2886,7 @@ void sentinelProcessHelloMessage(char *hello, int hello_len) {
     uint64_t current_epoch, master_config_epoch;
     char **token = sdssplitlen(hello, hello_len, ",", 1, &numtokens);
     sentinelRedisInstance *si, *master;
-    
+
     if (numtokens == 8) {
         /* Obtain a reference to the master this hello message is about */
         master = sentinelGetMasterByName(token[4]);
