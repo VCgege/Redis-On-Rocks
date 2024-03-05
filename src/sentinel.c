@@ -2353,8 +2353,9 @@ struct rewriteConfigState *sentinelRewriteConfigReadOldFileIfNeeded(char *path) 
     return rewriteConfigReadOldFile(path);
 
 werr:
-    serverLog(LL_WARNING,"WARNING: Sentinel was not able to save the new configuration on disk!!!: %s", strerror(errno));
+    serverLog(LL_WARNING,"WARNING: Sentinel was not able to read from disk!!!: %s", strerror(errno));
     if (fd != -1) close(fd);
+    return initRewriteConfigState();
 }
 
 /* ====================== hiredis connection handling ======================= */
