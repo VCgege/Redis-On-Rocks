@@ -2334,9 +2334,8 @@ werr:
     if (fd != -1) close(fd);
 }
 
-/* If last flush was trigger by sentinelFlushConfig, config will 
- * be unchanged and do not need to read again. 
- */
+/* If last flush was trigger by sentinelFlushConfig, previous_flush_time will 
+ * be unchanged and do not need to read disk again. */
 struct rewriteConfigState *sentinelRewriteConfigReadOldFileIfNeeded(char *path) {
     int fd = -1;
     struct stat fileInfo;
@@ -2355,7 +2354,7 @@ struct rewriteConfigState *sentinelRewriteConfigReadOldFileIfNeeded(char *path) 
 werr:
     serverLog(LL_WARNING,"WARNING: Sentinel was not able to read from disk!!!: %s", strerror(errno));
     if (fd != -1) close(fd);
-    return initRewriteConfigState();
+    return NULL;
 }
 
 /* ====================== hiredis connection handling ======================= */
