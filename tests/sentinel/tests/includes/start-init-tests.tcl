@@ -4,10 +4,12 @@ test "(start-init) Flush config and compare rewrite config file lines" {
         set file1 ../tests/includes/sentinel.conf
         set file2 [file join "sentinel_${id}" "sentinel.conf"] 
 
-        set file_data [read $file1]
+        set fh1 [open $file1 r]
+        set file_data [read $1]
         puts $file_data
 
-        set file_data [read $file2]
+        set fh2 [open $file2 r]
+        set file_data [read $fh2]
         puts $file_data
 
 
