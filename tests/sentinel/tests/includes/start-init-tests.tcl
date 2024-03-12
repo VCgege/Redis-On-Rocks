@@ -5,7 +5,7 @@ test "(start-init) Flush config and compare rewrite config file lines" {
         set file2 [file join "sentinel_${id}" "sentinel.conf"] 
 
         set fh1 [open $file1 r]
-        set file_data [read $1]
+        set file_data [read $fh1]
         puts $file_data
 
         set fh2 [open $file2 r]
