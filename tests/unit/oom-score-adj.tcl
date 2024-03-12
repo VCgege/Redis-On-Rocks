@@ -56,6 +56,7 @@ if {$system_name eq {linux}} {
 
                 # Make sure it fails
                 catch {r config set oom-score-adj yes} e
+                puts "\n e"
                 assert_match {*Failed to set*} $e
 
                 # Make sure it remains off
