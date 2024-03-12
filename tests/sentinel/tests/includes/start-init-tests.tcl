@@ -7,10 +7,11 @@ test "(start-init) Flush config and compare rewrite config file lines" {
         set fh2 [open $file2 r]
         while {[gets $fh1 line1]} {
             puts "\nfh1: $line1"
+            if {[gets $fh2 line2]} {
+                puts "fh2: $line2"
+            }
         }
-         while {[gets $fh2 line2]} {
-            puts "\nfh2: $line2"
-        }
+
 
 
         
