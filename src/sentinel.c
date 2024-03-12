@@ -2349,7 +2349,6 @@ int sentinelRewriteConfig(char *path, int force_all) {
     if (mtime == sentinel.previous_flush_time) {
         return rewriteConfigNotReadOld(path, force_all);
     }
-    serverLog(LL_WARNING,"WARNING: sentinelRewriteConfig Read old!!!");
     return rewriteConfig(path, force_all);
 
 werr:
