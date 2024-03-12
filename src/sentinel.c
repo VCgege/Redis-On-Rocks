@@ -2352,6 +2352,7 @@ int sentinelRewriteConfig(char *path, int force_all) {
     return rewriteConfig(path, force_all);
 
 werr:
+    serverLog(LL_WARNING,"WARNING: Sentinel was not able to read from disk!!!: %s", strerror(errno));
     if (fd != -1) close(fd);
     return -1;
 }
