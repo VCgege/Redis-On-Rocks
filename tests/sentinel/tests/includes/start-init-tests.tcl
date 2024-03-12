@@ -8,8 +8,9 @@ test "(start-init) Flush config and compare rewrite config file lines" {
         set file2_contents [read $fh2]
 
         while {[gets $fh1 line1]} {
+            puts “fh1: $line1”
             if {![regexp $line1 $file2_contents]} {
-                fail "sentinel config file rewrite sequence changed"
+                fail "sentinel config missed"
             }
         }
         close $fh1
