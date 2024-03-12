@@ -6,6 +6,7 @@ test "(start-init) Flush config and compare rewrite config file lines" {
         set fh1 [open $file1 r]
         set fh2 [open $file2 r]
         set file2_contents [read $fh2]
+        puts "\nfh2：\n$file2_contents"
 
         while {[gets $fh1 line1]} {
             if {![regexp $line1 $file2_contents]} {
