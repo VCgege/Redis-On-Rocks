@@ -94,12 +94,12 @@ static inline void bitmapMetaInit(bitmapMeta *meta, robj *value)
 }
 
 static inline sds bitmapMetaEncode(bitmapMeta *bm) {
-    if (bm == NULL) return NULL;
+    if (bm == NULL) return NULL; // 什么情况下bm为NULL？ // 为什么可以不encode subkey_status？
     return encodeBitmapSize(bm->size);
 }
 
 static inline bitmapMeta *bitmapMetaDecode(const char *extend, size_t extend_len) {
-    if (extend_len != sizeof(long)) return NULL;
+    if (extend_len != sizeof(long)) return NULL; // WHY?
     bitmapMeta *bitmap_meta = bitmapMetaCreate();
 
     bitmap_meta->size = decodeBitmapSize(extend);
@@ -122,7 +122,7 @@ int bitmapMetaEqual(bitmapMeta *dest_meta, bitmapMeta *src_meta) {
 
 static inline int bitmapMetaGetHotSubkeysNum(bitmapMeta *bitmap_meta, int start_subkey_idx, int end_subkey_idx)
 {
-    if (bitmap_meta == NULL) {
+    if (bitmap_meta == NULL) { // 把marker的实现拆分出来
         return 0;
     }
     serverAssert(start_subkey_idx <= end_subkey_idx && start_subkey_idx >= 0);
@@ -152,7 +152,7 @@ static inline void bitmapMetaSetSubkeyStatus(bitmapMeta *bitmap_meta, int start_
 static inline int bitmapMetaGetSubkeyStatus(bitmapMeta *bitmap_meta, int start_subkey_idx, int end_subkey_idx)
 {
     if (bitmap_meta->subkeys_status == NULL) {
-        return 0;
+        return 0; //WHY?
     }
     serverAssert(start_subkey_idx <= end_subkey_idx && start_subkey_idx >= 0);
     return rbmGetBitRange(bitmap_meta->subkeys_status, start_subkey_idx, end_subkey_idx);
@@ -375,6 +375,7 @@ typedef struct bitmapDataCtx {
     argRewriteRequest arg_reqs[2];
 } bitmapDataCtx;
 
+// TODO 移到REDIS_TEST
 void bitmapDataCtxReset(bitmapDataCtx *datactx)
 {
     zfree(datactx->subkeys_logic_idx);
@@ -427,6 +428,7 @@ static inline void bitmapSwapAnaInSelectSubKeys(bitmapDataCtx *datactx, bitmapMe
     }
 
     int subkey_num_need_swapin = subkeys_swap_in_end_idx - subkeys_swap_in_start_idx + 1 - bitmapMetaGetHotSubkeysNum(meta, subkeys_swap_in_start_idx, subkeys_swap_in_end_idx);
+    serverAssert(subkey_num_need_swapin >= 0);
 
     /* subkeys required are all in redis */
     if (subkey_num_need_swapin == 0) {
@@ -438,11 +440,11 @@ static inline void bitmapSwapAnaInSelectSubKeys(bitmapDataCtx *datactx, bitmapMe
     /* subkeys required are not all in redis */
     if (subkey_num_need_swapin == subkeys_num) {
         /* all subKey of bitmap need to swap in */
-        datactx->subkeys_num = -1;
+        datactx->subkeys_num = -1; // -1 有特殊含义？
         return;
     }
 
-    datactx->subkeys_logic_idx = zmalloc(sizeof(robj*) * subkey_num_need_swapin);
+    datactx->subkeys_logic_idx = zmalloc(sizeof(robj*) * subkey_num_need_swapin); // robj*?
     int cursor = 0;
     /* record idx of subkey to swap in. */
     for (int i = subkeys_swap_in_start_idx; i <= subkeys_swap_in_end_idx; i++) {
@@ -474,10 +476,10 @@ int bitmapSwapAnaOutSelectSubkeys(swapData *data, bitmapDataCtx *datactx, int *m
          * If data & meta clean, we persists nothing (just free). */
         if (objectIsMetaDirty(data->value)) { /* meta dirty */
             /* meta dirty */
-            subkeys_num_may_swapout = 0;
+            subkeys_num_may_swapout = 0; // 搞反了？
             noswap = 0;
         } else { /* clean */
-            subkeys_num_may_swapout = hot_subkeys_num;
+            subkeys_num_may_swapout = hot_subkeys_num; // 搞反了？
             noswap = 1;
         }
     }
@@ -563,7 +565,7 @@ int bitmapSwapAna(swapData *data, int thd, struct keyRequest *req,
                     } else {
                         datactx->subkeys_num = 0;
                         datactx->subkeys_logic_idx = zmalloc(sizeof(int));
-                        datactx->subkeys_logic_idx[datactx->subkeys_num++] = -1;
+                        datactx->subkeys_logic_idx[datactx->subkeys_num++] = -1; // 为什么-1？
                         *intention = SWAP_IN;
                         *intention_flags = 0;
                     }
@@ -579,6 +581,7 @@ int bitmapSwapAna(swapData *data, int thd, struct keyRequest *req,
                 bitmapSwapAnaInSelectSubKeys(datactx, meta, req->l.ranges);
 
                 *intention = datactx->subkeys_num == 0 ? SWAP_NOP : SWAP_IN;
+                // NOP + EXEC_IN_DEL 则无需swap in？
                 if (cmd_intention_flags == SWAP_IN_DEL)
                     *intention_flags = SWAP_EXEC_IN_DEL;
                 else
@@ -781,17 +784,17 @@ int bitmapDecodeData(swapData *data, int num, int *cfs, sds *rawkeys,
         uint64_t subkey_version;
         int subkey_idx;
 
+        if (rawvals[i] == NULL) {
+            continue;
+        }
         if (rocksDecodeDataKey(rawkeys[i],sdslen(rawkeys[i]),
                                &dbid,&keystr,&klen,&subkey_version,&subkeystr,&slen) < 0)
             continue;
         if (version != subkey_version)
             continue;
 
-        if (slen == strlen("foo")) {
+        if (slen == strlen("foo")) { // why？
             /* "foo" subkey */
-            continue;
-        }
-        if (rawvals[i] == NULL) {
             continue;
         }
         subkey_idx = bitmapDecodeSubkeyIdx(subkeystr, slen);

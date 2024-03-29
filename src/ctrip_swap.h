@@ -708,6 +708,7 @@ static inline uint64_t swapDataObjectVersion(swapData *d) {
 
 static inline int swapDataPersisted(swapData *d) {
     if (d->swap_type == SWAP_TYPE_BITMAP && d->object_meta) {
+      //用bitmapMetaIsMarker
         return objectMetaGetPtr(d->object_meta) != NULL;
     }
     return d->object_meta || d->cold_meta;

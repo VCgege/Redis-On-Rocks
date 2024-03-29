@@ -1203,6 +1203,7 @@ static inline uint32_t fullContainerGetBitPos(uint8_t bitIdxPrefix, uint32_t **i
     return bitsNum - leftNum;
 }
 
+// 无需二级指针
 static inline uint32_t bucketGetBitPos(roaringBitmap *rbm, uint8_t bucketPhyIdx, uint32_t **idxArrCursor, uint32_t bitsNum)
 {
     uint8_t bitIdxPrefix = rbm->buckets[bucketPhyIdx];
