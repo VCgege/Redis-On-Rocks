@@ -29,6 +29,7 @@
 #include "ctrip_swap.h"
 #include "ctrip_roaring_bitmap.h"
 
+// 如果开启了持久化，并且重启了ror之后修改了subkey_size则subkey大小不匹配
 #define BITMAP_SUBKEY_SIZE (server.swap_bitmap_subkey_size) /* default 4KB */
 #define BITS_NUM_IN_SUBKEY (BITMAP_SUBKEY_SIZE * 8)
 #define BITMAP_MAX_INDEX INT_MAX
@@ -191,6 +192,7 @@ objectMeta *createBitmapObjectMeta(uint64_t version, bitmapMeta *bitmap_meta) {
     return object_meta;
 }
 
+// 这不是Free，这是Deinit
 void bitmapObjectMetaFree(objectMeta *object_meta) {
     if (object_meta == NULL) return;
     bitmapMetaFree(objectMetaGetPtr(object_meta));
@@ -887,6 +889,8 @@ int bitmapSwapIn(swapData *data, void *result, void *datactx) {
     return 0;
 }
 
+// 这不是一个有独立含义的操作，不要单独抽出来一个函数
+// 这个函数假设了bitmap从前到后evict，这个假设在修改outSelectSubkey后不一定成立，因此这里至少需要Assert这个假设成立
 static inline robj *bitmapObjectFreeColdSubkeys(robj *value, bitmapDataCtx *datactx)
 {
     /* from subkey idx = 0 to right to swap out subkeys in bitmap. */
@@ -978,7 +982,7 @@ int bitmapSwapDel(swapData *data, void *datactx_, int del_skip) {
             /* different from bighash, set, no need to delete meta, just free bitmap meta, keep bitmap_type flag in meta */
             objectMeta *meta = swapDataObjectMeta(data);
             serverAssert(meta != NULL);
-            bitmapObjectMetaFree(meta);
+            bitmapObjectMetaFree(meta); // 重命名为 to bitmapObjectMeta2Marker
         }
         return 0;
     } else {
