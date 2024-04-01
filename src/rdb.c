@@ -1337,7 +1337,7 @@ int rdbSaveRio(rio *rdb, int *error, int rdbflags, rdbSaveInfo *rsi, int rordb) 
         if (rordb) {
             if (rordbSaveDbRio(rdb,db) == -1) goto werr;
         } else {
-            if (rdbSaveHotExtension(rdb,error,db,hot_keys_extension,rdbflags)) goto werr;
+            if (rdbSaveHotExtension(rdb,error,db,hot_keys_extension,rdbflags)) goto werr; // 移动到swapShouldSaveByRor，不要用临时的hot_keys_extension列表
             if (rdbSaveRocks(rdb,error,db,rdbflags)) goto werr;
         }
         listRelease(hot_keys_extension);

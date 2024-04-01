@@ -1337,6 +1337,8 @@ int bitmapSaveHotSubkeysUntill(rdbKeySaveData *save, rio *rdb, int idx, int rdbt
     return 0;
 }
 
+
+// 不是完整的模块操作，合并到bitmapSave函数
 int checkBeforeSaveDecoded(rdbKeySaveData *save, decodedData *decoded)
 {
     robj *key = save->key;
@@ -1351,6 +1353,7 @@ int checkBeforeSaveDecoded(rdbKeySaveData *save, decodedData *decoded)
 
     bitmapSaveIterator *iter = save->iter;
     serverAssert(iter != NULL);
+    // 什么情况下会出现subkey_idx与提前结束？如果不会，直接assert
     if (iter->subkey_idx == BITMAP_GET_SUBKEYS_NUM(bitmap_meta->size, BITMAP_SUBKEY_SIZE)) {
         /* bitmap has been totaly saved. */
         return -1;
@@ -1360,7 +1363,7 @@ int checkBeforeSaveDecoded(rdbKeySaveData *save, decodedData *decoded)
     int idx = bitmapDecodeSubkeyIdx(decoded->subkey, sdslen(decoded->subkey));
 
     if (save->value != NULL) {
-        serverAssert(bitmap_meta);
+        serverAssert(bitmap_meta); // 此处assert已经无效
         if (bitmapMetaGetSubkeyStatus(bitmap_meta, idx, idx)) {
             /* hot subkey exist both redis and rocksDb, skip this subkey, it will be saved in the next cold subkey process. */
             return -1;
@@ -1388,6 +1391,7 @@ int bitmapSave(rdbKeySaveData *save, rio *rdb, decodedData *decoded) {
         serverAssert(subvalobj->type == OBJ_STRING);
 
         if (rdbWriteRaw(rdb,subvalobj->ptr,stringObjectLen(subvalobj)) == -1) {
+            // 泄露了subvalobj
             return -1;
         }
 
