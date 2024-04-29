@@ -859,14 +859,8 @@ void bitcountCommand(client *c) {
 
     objectMeta *om = lookupMeta(c->db,c->argv[1]);
     metaBitmap meta_bitmap;
-    if (om != NULL) {
-        serverAssert(om->swap_type == SWAP_TYPE_BITMAP);
-        metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
-    } else {
-        /* maybe it is a empty string object. */
-        /* it is never processed as bitmap in ror. */
-        metaBitmapInit(&meta_bitmap, NULL, o);
-    }
+    serverAssert(om != NULL && om->swap_type == SWAP_TYPE_BITMAP);
+    metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
     metaBitmapBitcount(&meta_bitmap, c);
 }
 
@@ -967,14 +961,9 @@ void bitposCommand(client *c) {
 
     objectMeta *om = lookupMeta(c->db,c->argv[1]);
     metaBitmap meta_bitmap;
-    if (om != NULL) {
-        serverAssert(om->swap_type == SWAP_TYPE_BITMAP);
-        metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
-    } else {
-        /* maybe it is a empty string object. */
-        /* it is never processed as bitmap in ror. */
-        metaBitmapInit(&meta_bitmap, NULL, o);
-    }
+    serverAssert(om != NULL && om->swap_type == SWAP_TYPE_BITMAP);
+    metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
+
     metaBitmapBitpos(&meta_bitmap, c, bit);
 }
 
