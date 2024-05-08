@@ -1402,7 +1402,11 @@ int bitmapSaveToRdbBitmap(rdbKeySaveData *save, rio *rdb) {
         unsigned long hot_subkey_size = BITMAP_GET_SPECIFIED_SUBKEY_SIZE(bitmap_size, subkey_size, saving_subkey_idx);
         sds subval = sdsnewlen((char*)decoded_bitmap->ptr + offset, hot_subkey_size);
 
-        if (rdbSaveRawString(rdb, subval, sdslen(subval)) == -1) {
+        robj subvalobj;
+        initStaticStringObject(subvalobj, subval);
+
+        //TODO opt use rdbSaveRawString to skip alloc/dealloc subval
+        if (rdbSaveStringObject(rdb, &subvalobj) == -1) {
             sdsfree(subval);
             decrRefCount(decoded_bitmap);
             return -1;

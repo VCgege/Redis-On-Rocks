@@ -851,7 +851,11 @@ void bitcountCommand(client *c) {
 
     objectMeta *om = lookupMeta(c->db,c->argv[1]);
     metaBitmap meta_bitmap;
-    serverAssert(om != NULL && om->swap_type == SWAP_TYPE_BITMAP);
+    if (om != NULL) {
+        serverLog(LL_NOTICE, "bitcountCommand om %ld", om->swap_type);
+    }
+    serverAssert(om != NULL);
+    serverAssert(om->swap_type == SWAP_TYPE_BITMAP);
     metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
     metaBitmapBitcount(&meta_bitmap, c);
 }
