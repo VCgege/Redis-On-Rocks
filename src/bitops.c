@@ -491,8 +491,15 @@ robj *lookupStringForBitCommand(client *c, uint64_t maxbit) {
         o = dbUnshareStringValue(c->db,c->argv[1],o);
         objectMeta *om = lookupMeta(c->db,c->argv[1]);
         metaBitmap meta_bitmap;
-        serverAssert(om != NULL && om->swap_type == SWAP_TYPE_BITMAP);
-        metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
+        if (om != NULL) {
+            serverAssert(om->swap_type == SWAP_TYPE_BITMAP);
+            metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
+        } else {
+            //TODO confirm fixed how?
+            /* maybe it is a string object. */
+            /* it is never processed as bitmap in ror. */
+            metaBitmapInit(&meta_bitmap, NULL, o);
+        }
         metaBitmapGrow(&meta_bitmap, byte+1);
     }
     return o;
@@ -852,11 +859,13 @@ void bitcountCommand(client *c) {
     objectMeta *om = lookupMeta(c->db,c->argv[1]);
     metaBitmap meta_bitmap;
     if (om != NULL) {
-        serverLog(LL_NOTICE, "bitcountCommand om %ld", om->swap_type);
+        serverAssert(om->swap_type == SWAP_TYPE_BITMAP);
+        metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
+    } else {
+        /* maybe it is a string object. */
+        /* it is never processed as bitmap in ror. */
+        metaBitmapInit(&meta_bitmap, NULL, o);
     }
-    serverAssert(om != NULL);
-    serverAssert(om->swap_type == SWAP_TYPE_BITMAP);
-    metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
     metaBitmapBitcount(&meta_bitmap, c);
 }
 
@@ -957,8 +966,14 @@ void bitposCommand(client *c) {
 
     objectMeta *om = lookupMeta(c->db,c->argv[1]);
     metaBitmap meta_bitmap;
-    serverAssert(om != NULL && om->swap_type == SWAP_TYPE_BITMAP);
-    metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
+    if (om != NULL) {
+        serverAssert(om->swap_type == SWAP_TYPE_BITMAP);
+        metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
+    } else {
+        /* maybe it is a string object. */
+        /* it is never processed as bitmap in ror. */
+        metaBitmapInit(&meta_bitmap, NULL, o);
+    }
 
     metaBitmapBitpos(&meta_bitmap, c, bit);
 }
