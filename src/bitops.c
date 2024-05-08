@@ -491,17 +491,9 @@ robj *lookupStringForBitCommand(client *c, uint64_t maxbit) {
         o = dbUnshareStringValue(c->db,c->argv[1],o);
         objectMeta *om = lookupMeta(c->db,c->argv[1]);
         metaBitmap meta_bitmap;
-        if (om != NULL) {
-            serverAssert(om->swap_type == SWAP_TYPE_BITMAP);
-            metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
-        } else {
-            //TODO confirm fixed how?
-            /* maybe it is a empty string object. */
-            /* it is never processed as bitmap in ror. */
-            metaBitmapInit(&meta_bitmap, NULL, o);
-        }
+        serverAssert(om != NULL && om->swap_type == SWAP_TYPE_BITMAP);
+        metaBitmapInit(&meta_bitmap, objectMetaGetPtr(om), o);
         metaBitmapGrow(&meta_bitmap, byte+1);
-        bitmapSetObjectMarkerIfNeeded(c->db, c->argv[1]);
     }
     return o;
 }
