@@ -110,7 +110,7 @@ static inline bitmapMeta *bitmapMetaDecode(const char *extend,
         size_t extend_len) {
     unsigned long size = 0;
     for (int i = 0; i < 7; i++) {
-        size |= ((unsigned long)extend[i + 1] << (i * 8));
+        size |= (((uint64_t)extend[i + 1]) << (i * 8));
     }
 
     bitmapMeta *bitmap_meta = bitmapMetaCreate();
