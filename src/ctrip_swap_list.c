@@ -1278,9 +1278,10 @@ void listObjectMetaDup(struct objectMeta *dup_meta, struct objectMeta *object_me
 
 static inline long listDecodeRidx(const char *str, size_t len);
 
-int listObjectMetaRebuildFeed(struct objectMeta *rebuild_meta,
+int listObjectMetaRebuildFeed(struct objectMeta *rebuild_meta, struct objectMeta *cold_meta,
         uint64_t version, const char *subkey, size_t sublen, robj *subval) {
     UNUSED(subval);
+    UNUSED(cold_meta);
     long ridx;
     listMeta *lm = objectMetaGetPtr(rebuild_meta);
     UNUSED(version);

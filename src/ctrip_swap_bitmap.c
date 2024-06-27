@@ -61,8 +61,8 @@ static inline unsigned long long bitmapDecodeSubkeyIdx(const char *str, size_t l
 /* bitmap meta (NOT marker) */
 
 typedef struct bitmapMeta {
-    size_t size;
     size_t subkey_size;
+    size_t size;
     int pure_cold_subkeys_num;
     roaringBitmap *subkeys_status;  /* status set to 1 if subkey hot. */
 } bitmapMeta;
@@ -356,17 +356,21 @@ int bitmapObjectMetaEqual(struct objectMeta *dest_om, struct objectMeta *src_om)
     }
 }
 
-int bitmapObjectMetaRebuildFeed(struct objectMeta *rebuild_meta,
+int bitmapObjectMetaRebuildFeed(struct objectMeta *rebuild_meta,struct objectMeta *cold_meta,
         uint64_t version, const char *subkey, size_t sublen, robj *subval) {
     UNUSED(version);
     serverAssert(!bitmapObjectMetaIsMarker(rebuild_meta));
-    bitmapMeta *meta = objectMetaGetPtr(rebuild_meta);
+    serverAssert(!bitmapObjectMetaIsMarker(cold_meta));
+    bitmapMeta *cm = objectMetaGetPtr(cold_meta);
+    bitmapMeta *rm = objectMetaGetPtr(rebuild_meta);
+    rm->subkey_size = cm->subkey_size;
+
     if (sublen != BITMAP_SUBKEY_IDX_ENCODE_LEN) return -1;
     if (subval == NULL || subval->type != OBJ_STRING) return -1;
+    if (rm->subkey_size < stringObjectLen(subval)) return -1;
     if (subkey) {
-        meta->pure_cold_subkeys_num++;
-        meta->size += stringObjectLen(subval);
-        meta->subkey_size = MAX(meta->subkey_size, stringObjectLen(subval));
+        rm->size += stringObjectLen(subval);
+        rm->pure_cold_subkeys_num++;
         return 0;
     } else {
         return -1;
@@ -2285,10 +2289,16 @@ int swapDataBitmapTest(int argc, char **argv, int accurate) {
         bitmapMeta *bitmap_meta1;
         bitmap_meta1 = bitmapMetaCreate();
 
-        /* rebuildFeed */
+        bitmapMeta *bitmap_meta3;
+        bitmap_meta3 = bitmapMetaCreate();
+        bitmap_meta3->subkey_size = BITMAP_SUBKEY_SIZE;
 
-        objectMeta *object_meta1;
-        object_meta1 = createBitmapObjectMeta(0, bitmap_meta1);
+        /* rebuildFeed */
+        objectMeta *cold_meta;
+        cold_meta = createBitmapObjectMeta(0, bitmap_meta3);
+
+        objectMeta *rebuild_meta;
+        rebuild_meta = createBitmapObjectMeta(0, bitmap_meta1);
 
         sds subval = sdsnewlen(NULL, BITMAP_SUBKEY_SIZE);
         robj subval_obj;
@@ -2297,7 +2307,7 @@ int swapDataBitmapTest(int argc, char **argv, int accurate) {
         sds subkey = sdsnewlen(NULL, sizeof(unsigned long));
 
         for (int i = 0; i < 4; i++) {
-            test_assert(0 == bitmapObjectMetaRebuildFeed(object_meta1,0,subkey,sdslen(subkey),&subval_obj));
+            test_assert(0 == bitmapObjectMetaRebuildFeed(rebuild_meta,cold_meta,0,subkey,sdslen(subkey),&subval_obj));
         }
 
         sdsfree(subval);
@@ -2334,7 +2344,8 @@ int swapDataBitmapTest(int argc, char **argv, int accurate) {
 
         sdsfree(str);
         decrRefCount(bitmap1);
-        freeObjectMeta(object_meta1);
+        freeObjectMeta(rebuild_meta);
+        freeObjectMeta(cold_meta);
 
         /* set clear marker */
 

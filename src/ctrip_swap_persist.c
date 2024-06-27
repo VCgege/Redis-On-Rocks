@@ -556,7 +556,7 @@ static inline void keyLoadFixFeed(struct keyLoadFixData *fix, decodedData *d) {
         subval = rdbLoadStringObject(&sdsrdb);
     }
 
-    if (fix->rebuild_meta && objectMetaRebuildFeed(fix->rebuild_meta,
+    if (fix->rebuild_meta && objectMetaRebuildFeed(fix->rebuild_meta,fix->cold_meta,
                 d->version,d->subkey,sdslen(d->subkey),subval)) {
         fix->feed_err++;
     } else {

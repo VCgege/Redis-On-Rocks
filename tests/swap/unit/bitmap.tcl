@@ -1462,6 +1462,41 @@ start_server {
             }
         }
     }
+
+    test {modify swap-bitmap-subkey-size during swap} {
+        r flushdb
+        set bak_bitmap_subkey_size [lindex [r config get swap-bitmap-subkey-size] 1]
+
+        r CONFIG SET swap-bitmap-subkey-size 4096
+
+        build_cold_data mybitmap1
+        build_pure_hot_data mybitmap2
+
+        r CONFIG SET swap-bitmap-subkey-size 2048
+
+        r swap.evict mybitmap2
+        wait_key_cold r mybitmap2
+
+        # once bitmap become persisted, bitmap meta existed, subkey size is determined by configuration
+
+        assert_equal [object_meta_subkey_size r mybitmap1] 4096
+        assert_equal [object_meta_subkey_size r mybitmap2] 2048
+
+        # mybitmap1 turn pure hot, then turn cold
+        r getrange mybitmap1 0 1
+        r getbit mybitmap1 0
+        r swap.evict mybitmap1
+        wait_key_cold r mybitmap1
+
+        assert_equal [object_meta_subkey_size r mybitmap1] 2048
+
+        check_mybitmap_is_right mybitmap1 $notextend
+        check_mybitmap_is_right mybitmap2 $notextend
+
+        r flushdb
+        r config set swap-bitmap-subkey-size $bak_bitmap_subkey_size
+    }
+
 }
 
 start_server {
@@ -1527,7 +1562,6 @@ start_server {
         }
     }
 
-
     test {cold rdbsave and rdbload with swap-bitmap-subkey-size exchange 2048 to 4096} {
         r flushdb
         set bak_bitmap_subkey_size [lindex [r config get swap-bitmap-subkey-size] 1]
@@ -1559,6 +1593,36 @@ start_server {
         check_mybitmap_is_right mybitmap1 $notextend
         r flushdb
         # reset default config
+        r config set swap-bitmap-subkey-size $bak_bitmap_subkey_size
+    }
+
+    test {modify swap-bitmap-subkey-size during rdbsave and load} {
+        r flushdb
+        set bak_bitmap_subkey_size [lindex [r config get swap-bitmap-subkey-size] 1]
+
+        r CONFIG SET swap-bitmap-subkey-size 4096
+
+        build_cold_data mybitmap1
+        build_pure_hot_data mybitmap2
+
+        r CONFIG SET swap-bitmap-subkey-size 2048
+
+        # once bitmap become persisted, bitmap meta existed, subkey size is determined by configuration
+
+        assert_equal [object_meta_subkey_size r mybitmap1] 4096
+        assert_equal [object_meta_subkey_size r mybitmap2] 0
+
+        r SAVE
+        r CONFIG SET swap-bitmap-subkey-size 1024
+        r DEBUG RELOAD NOSAVE
+
+        assert_equal [object_meta_subkey_size r mybitmap1] 1024
+        assert_equal [object_meta_subkey_size r mybitmap1] 1024
+
+        check_mybitmap_is_right mybitmap1 $notextend
+        check_mybitmap_is_right mybitmap2 $notextend
+
+        r flushdb
         r config set swap-bitmap-subkey-size $bak_bitmap_subkey_size
     }
 
