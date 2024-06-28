@@ -2022,17 +2022,28 @@ start_server {tags {"bitmap chaos test"} overrides {save ""}} {
             for {set round 0} {$round < $rounds} {incr round} {
                 puts "chaos load $bitmaps bitmaps with $loaders loaders in $duration seconds ($round/$rounds)"
                     # load with chaos bitmap operations
+
+                set min_subkey_size 2048
+                set max_subkey_size 4096
+
                 for {set loader 0} {$loader < $loaders} {incr loader} {
+                    set subkey_size_slave [expr { int(rand() * ($max_subkey_size - $min_subkey_size + 1)) + $min_subkey_size }]
+                    $slave config set swap-bitmap-subkey-size $subkey_size_slave
+
                     lappend load_handles [start_run_load $master_host $master_port $duration 0 {
                         set bitmaps 4
                         # in bit
                         set bitmap_max_length 335872
                         set block_timeout 0.1
-                                    set count 0
+                        set count 0
                         set mybitmap "mybitmap-[randomInt $bitmaps]"
                         # set mybitmap_len [$r1 llen $mybitmap]
                         set mybitmap_len [expr {[$r1 strlen $mybitmap] * 8}]
-                                    set otherbitmap "mybitmap-[randomInt $bitmaps]"
+                        set otherbitmap "mybitmap-[randomInt $bitmaps]"
+
+                        set min_subkey_size 2048
+                        set max_subkey_size 4096
+
                         set src_direction [randpath {return LEFT} {return RIGHT}]
                         set dst_direction [randpath {return LEFT} {return RIGHT}]
                         randpath {
@@ -2049,6 +2060,9 @@ start_server {tags {"bitmap chaos test"} overrides {save ""}} {
                         } {
                             set randIdx [randomInt $bitmap_max_length]
                             $r1 BITFIELD $mybitmap get u4 $randIdx
+                        } {
+                            set subkey_size_master [expr { int(rand() * ($max_subkey_size - $min_subkey_size + 1)) + $min_subkey_size }]
+                            $r1 config set swap-bitmap-subkey-size $subkey_size_master
                         } {
                             set randIdx [randomInt $bitmap_max_length]
                             $r1 BITFIELD_RO $mybitmap get u4 $randIdx
