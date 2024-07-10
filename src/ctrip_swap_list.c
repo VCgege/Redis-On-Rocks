@@ -1194,10 +1194,11 @@ sds encodeListMeta(listMeta *lm) {
     return result;
 }
 
-sds encodeListObjectMeta(struct objectMeta *object_meta, void *aux) {
+sds encodeListObjectMeta(struct objectMeta *object_meta, void *aux, int meta_enc_mode) {
     UNUSED(aux);
+    UNUSED(meta_enc_mode);
     if (object_meta == NULL) return NULL;
-    serverAssert(object_meta->object_type == OBJ_LIST);
+    serverAssert(object_meta->swap_type == SWAP_TYPE_LIST);
     return encodeListMeta(objectMetaGetPtr(object_meta));
 }
 
@@ -1243,7 +1244,7 @@ err:
 }
 
 int decodeListObjectMeta(struct objectMeta *object_meta, const char *extend, size_t extlen) {
-    serverAssert(object_meta->object_type == OBJ_LIST);
+    serverAssert(object_meta->swap_type == SWAP_TYPE_LIST);
     serverAssert(objectMetaGetPtr(object_meta) == NULL);
     objectMetaSetPtr(object_meta,decodeListMeta(extend,extlen));
     return 0;
@@ -1251,7 +1252,7 @@ int decodeListObjectMeta(struct objectMeta *object_meta, const char *extend, siz
 
 
 int listObjectMetaIsHot(objectMeta *object_meta, robj *value) {
-    serverAssert(value && object_meta && object_meta->object_type == OBJ_LIST);
+    serverAssert(value && object_meta && object_meta->swap_type == SWAP_TYPE_LIST);
     listMeta *lm = objectMetaGetPtr(object_meta);
     if (lm == NULL) {
         return 1;
@@ -1261,14 +1262,15 @@ int listObjectMetaIsHot(objectMeta *object_meta, robj *value) {
     }
 }
 
-void listObjectMetaFree(objectMeta *object_meta) {
+void listObjectMetaFreeMeta(objectMeta *object_meta) {
     if (object_meta == NULL) return;
     listMetaFree(objectMetaGetPtr(object_meta));
+    objectMetaSetPtr(object_meta, NULL);
 }
 
 void listObjectMetaDup(struct objectMeta *dup_meta, struct objectMeta *object_meta) {
     if (object_meta == NULL) return;
-    serverAssert(dup_meta->object_type == OBJ_LIST);
+    serverAssert(dup_meta->swap_type == SWAP_TYPE_LIST);
     serverAssert(objectMetaGetPtr(dup_meta) == NULL);
     if (objectMetaGetPtr(object_meta) == NULL) return;
     objectMetaSetPtr(dup_meta,listMetaDup(objectMetaGetPtr(object_meta)));
@@ -1276,8 +1278,10 @@ void listObjectMetaDup(struct objectMeta *dup_meta, struct objectMeta *object_me
 
 static inline long listDecodeRidx(const char *str, size_t len);
 
-int listObjectMetaRebuildFeed(struct objectMeta *rebuild_meta,
-        uint64_t version, const char *subkey, size_t sublen) {
+int listObjectMetaRebuildFeed(struct objectMeta *rebuild_meta, struct objectMeta *cold_meta,
+        uint64_t version, const char *subkey, size_t sublen, robj *subval) {
+    UNUSED(subval);
+    UNUSED(cold_meta);
     long ridx;
     listMeta *lm = objectMetaGetPtr(rebuild_meta);
     UNUSED(version);
@@ -1314,7 +1318,7 @@ objectMetaType listObjectMetaType = {
     .encodeObjectMeta = encodeListObjectMeta,
     .decodeObjectMeta = decodeListObjectMeta,
     .objectIsHot = listObjectMetaIsHot,
-    .free = listObjectMetaFree,
+    .free = listObjectMetaFreeMeta,
     .duplicate = listObjectMetaDup,
     .equal = listObjectMetaEqual,
     .rebuildFeed = listObjectMetaRebuildFeed,
@@ -1487,8 +1491,8 @@ int listSwapAna(swapData *data, int thd, struct keyRequest *req,
         break;
     }
 
-    datactx->arg_reqs[0] = req->list_arg_rewrite[0];
-    datactx->arg_reqs[1] = req->list_arg_rewrite[1];
+    datactx->arg_reqs[0] = req->arg_rewrite[0];
+    datactx->arg_reqs[1] = req->arg_rewrite[1];
 
     return 0;
 }
@@ -1839,72 +1843,18 @@ int listSwapDel(swapData *data, void *datactx_, int del_skip) {
     }
 }
 
-/* arg rewrite */
-argRewrites *argRewritesCreate() {
-    argRewrites *arg_rewrites = zmalloc(sizeof(argRewrites));
-    argRewritesReset(arg_rewrites);
-    return arg_rewrites;
-}
-
-void argRewritesAdd(argRewrites *arg_rewrites, argRewriteRequest arg_req, MOVE robj *orig_arg) {
-    serverAssert(arg_rewrites->num < ARG_REWRITES_MAX);
-    argRewrite *rewrite = arg_rewrites->rewrites + arg_rewrites->num;
-    rewrite->arg_req = arg_req;
-    rewrite->orig_arg = orig_arg;
-    arg_rewrites->num++;
-}
-
-void argRewritesReset(argRewrites *arg_rewrites) {
-    memset(arg_rewrites,0,sizeof(argRewrites));
-}
-
-void argRewritesFree(argRewrites *arg_rewrites) {
-    if (arg_rewrites) zfree(arg_rewrites);
-}
-
-void clientArgRewritesRestore(client *c) {
-    for (int i = 0; i < c->swap_arg_rewrites->num; i++) {
-        argRewrite *rewrite = c->swap_arg_rewrites->rewrites+i;
-        int mstate_idx = rewrite->arg_req.mstate_idx, arg_idx = rewrite->arg_req.arg_idx;
-        if (mstate_idx < 0) {
-            serverAssert(arg_idx < c->argc);
-            decrRefCount(c->argv[arg_idx]);
-            c->argv[arg_idx] = rewrite->orig_arg;
-        } else {
-            serverAssert(mstate_idx < c->mstate.count);
-            serverAssert(arg_idx < c->mstate.commands[mstate_idx].argc);
-            decrRefCount(c->mstate.commands[mstate_idx].argv[arg_idx]);
-            c->mstate.commands[mstate_idx].argv[arg_idx] = rewrite->orig_arg;
-        }
-    }
-    argRewritesReset(c->swap_arg_rewrites);
-}
-
-void clientArgRewrite(client *c, argRewriteRequest arg_req, MOVE robj *new_arg) {
-    robj *orig_arg;
-    if (arg_req.mstate_idx < 0) {
-        serverAssert(arg_req.arg_idx < c->argc);
-        orig_arg = c->argv[arg_req.arg_idx];
-        c->argv[arg_req.arg_idx] = new_arg;
-        argRewritesAdd(c->swap_arg_rewrites,arg_req,orig_arg);
-    } else {
-        serverAssert(arg_req.mstate_idx < c->mstate.count);
-        serverAssert(arg_req.arg_idx < c->mstate.commands[arg_req.mstate_idx].argc);
-        orig_arg = c->mstate.commands[arg_req.mstate_idx].argv[arg_req.arg_idx];
-        c->mstate.commands[arg_req.mstate_idx].argv[arg_req.arg_idx] = new_arg;
-        argRewritesAdd(c->mstate.commands[arg_req.mstate_idx].swap_arg_rewrites,arg_req,orig_arg);
-    }
-}
-
-int listBeforeCall(swapData *data, client *c, void *datactx_) {
+int listBeforeCall(swapData *data, keyRequest *key_request, client *c,
+        void *datactx_) {
     listDataCtx *datactx = datactx_;
     objectMeta *object_meta;
     listMeta *meta;
 
+    UNUSED(key_request);
+
     object_meta = lookupMeta(data->db,data->key);
     if (object_meta == NULL) return 0;
 
-    serverAssert(object_meta->object_type == OBJ_LIST);
+    serverAssert(object_meta->swap_type == SWAP_TYPE_LIST);
     meta = objectMetaGetPtr(object_meta);
 
     for (int i = 0; i < 2; i++) {
@@ -1923,7 +1873,7 @@ int listBeforeCall(swapData *data, client *c, void *datactx_) {
         serverAssert(ret == C_OK);
         long midx = listMetaGetMidx(meta,index);
         robj *new_arg = createObject(OBJ_STRING,sdsfromlonglong(midx));
-        clientArgRewrite(c,arg_req,new_arg);
+        clientArgRewrite(c, arg_req, new_arg);
     }
 
     return 0;
@@ -2043,7 +1993,7 @@ int swapDataSetupList(swapData *d, void **pdatactx) {
 static inline listMeta *lookupListMeta(redisDb *db, robj *key) {
     objectMeta *object_meta = lookupMeta(db,key);
     if (object_meta == NULL) return NULL;
-    serverAssert(object_meta->object_type == OBJ_LIST);
+    serverAssert(object_meta->swap_type == SWAP_TYPE_LIST);
     return objectMetaGetPtr(object_meta);
 }
 
@@ -2192,6 +2142,7 @@ void listSaveDeinit(rdbKeySaveData *save) {
 
 rdbKeySaveType listSaveType = {
     .save_start = listSaveStart,
+    .save_hot_ext = NULL,
     .save = listSave,
     .save_end = listSaveEnd,
     .save_deinit = listSaveDeinit,
@@ -2253,7 +2204,7 @@ void listLoadStartWithValue(struct rdbKeyLoadData *load, rio *rdb, int *cf,
 
     *cf = META_CF;
     *rawkey = rocksEncodeMetaKey(load->db,load->key);
-    *rawval = rocksEncodeMetaVal(load->object_type,load->expire,load->version,extend);
+    *rawval = rocksEncodeMetaVal(load->swap_type,load->expire,load->version,extend);
 
     sdsfree(extend);
 }
@@ -2279,7 +2230,7 @@ void listLoadStartList(struct rdbKeyLoadData *load, rio *rdb, int *cf,
 
     *cf = META_CF;
     *rawkey = rocksEncodeMetaKey(load->db,load->key);
-    *rawval = rocksEncodeMetaVal(load->object_type,load->expire,load->version,extend);
+    *rawval = rocksEncodeMetaVal(load->swap_type,load->expire,load->version,extend);
     *error = 0;
 
     sdsfree(extend);
@@ -2392,7 +2343,7 @@ rdbKeyLoadType listLoadType = {
 void listLoadInit(rdbKeyLoadData *load) {
     load->type = &listLoadType;
     load->omtype = &listObjectMetaType;
-    load->object_type = OBJ_LIST;
+    load->swap_type = SWAP_TYPE_LIST;
 }
 
 #ifdef REDIS_TEST
@@ -2781,7 +2732,7 @@ int swapListMetaTest(int argc, char *argv[], int accurate) {
         listMetaAppendSegment(lm,SEGMENT_TYPE_COLD,2,2);
         listMetaAppendSegment(lm,SEGMENT_TYPE_HOT,4,2);
         objectMeta *object_meta = createListObjectMeta(0,lm);
-        sds extend = objectMetaEncode(object_meta);
+        sds extend = objectMetaEncode(object_meta, NORMAL_MODE);
         objectMeta *decoded_meta = createObjectMeta(OBJ_LIST,0);
         test_assert(objectMetaDecode(decoded_meta,extend,sdslen(extend)) == 0);
         listMeta *decoded_lm = objectMetaGetPtr(decoded_meta);
@@ -3318,25 +3269,25 @@ int swapListDataTest(int argc, char *argv[], int accurate) {
         datactx->arg_reqs[1].arg_idx = -1;
 
         rewriteResetClientCommandCString(c,3,"LINDEX","mylist","3");
-        listBeforeCall(data,c,datactx_);
+        listBeforeCall(data,NULL,c,datactx_);
         test_assert(!strcmp(c->argv[2]->ptr,"0"));
         clientArgRewritesRestore(c);
         test_assert(!strcmp(c->argv[2]->ptr,"3"));
 
         rewriteResetClientCommandCString(c,3,"LINDEX","mylist","4");
-        listBeforeCall(data,c,datactx_);
+        listBeforeCall(data,NULL,c,datactx_);
         test_assert(!strcmp(c->argv[2]->ptr,"1"));
         clientArgRewritesRestore(c);
         test_assert(!strcmp(c->argv[2]->ptr,"4"));
 
         rewriteResetClientCommandCString(c,3,"LINDEX","mylist","6");
-        listBeforeCall(data,c,datactx_);
+        listBeforeCall(data,NULL,c,datactx_);
         test_assert(!strcmp(c->argv[2]->ptr,"2"));
         clientArgRewritesRestore(c);
         test_assert(!strcmp(c->argv[2]->ptr,"6"));
 
         rewriteResetClientCommandCString(c,3,"LINDEX","mylist","1"); /* fail */
-        listBeforeCall(data,c,datactx_);
+        listBeforeCall(data,NULL,c,datactx_);
         test_assert(!strcmp(c->argv[2]->ptr,"0"));
         clientArgRewritesRestore(c);
         test_assert(!strcmp(c->argv[2]->ptr,"1"));
@@ -3346,7 +3297,7 @@ int swapListDataTest(int argc, char *argv[], int accurate) {
         datactx->arg_reqs[1].arg_idx = 3;
 
         rewriteResetClientCommandCString(c,4,"LRANGE","mylist","3","4");
-        listBeforeCall(data,c,datactx_);
+        listBeforeCall(data,NULL,c,datactx_);
         test_assert(!strcmp(c->argv[2]->ptr,"0"));
         test_assert(!strcmp(c->argv[3]->ptr,"1"));
         clientArgRewritesRestore(c);
@@ -3369,13 +3320,13 @@ int swapListDataTest(int argc, char *argv[], int accurate) {
         datactx->arg_reqs[1].arg_idx = -1;
 
         rewriteResetClientCommandCString(c,3,"LINDEX","mylist","1");
-        listBeforeCall(data,c,datactx_);
+        listBeforeCall(data,NULL,c,datactx_);
         test_assert(!strcmp(c->argv[2]->ptr,"1"));
         clientArgRewritesRestore(c);
         test_assert(!strcmp(c->argv[2]->ptr,"1"));
 
         rewriteResetClientCommandCString(c,3,"LINDEX","mylist","4");
-        listBeforeCall(data,c,datactx_);
+        listBeforeCall(data,NULL,c,datactx_);
         test_assert(!strcmp(c->argv[2]->ptr,"2"));
         clientArgRewritesRestore(c);
         test_assert(!strcmp(c->argv[2]->ptr,"4"));
@@ -3385,7 +3336,7 @@ int swapListDataTest(int argc, char *argv[], int accurate) {
         datactx->arg_reqs[1].arg_idx = 3;
 
         rewriteResetClientCommandCString(c,4,"LRANGE","mylist","4","4");
-        listBeforeCall(data,c,datactx_);
+        listBeforeCall(data,NULL,c,datactx_);
         test_assert(!strcmp(c->argv[2]->ptr,"2"));
         test_assert(!strcmp(c->argv[2]->ptr,"2"));
         clientArgRewritesRestore(c);
@@ -3453,7 +3404,7 @@ int swapListDataTest(int argc, char *argv[], int accurate) {
         sdsfree(subraw), sdsfree(subkey);
 
         test_assert(load->loaded_fields == 3);
-        test_assert(load->object_type == OBJ_LIST);
+        test_assert(load->swap_type == SWAP_TYPE_LIST);
         rdbKeyLoadDataDeinit(load);
 
         sdsfree(rdbhot);
@@ -3493,7 +3444,7 @@ int swapListDataTest(int argc, char *argv[], int accurate) {
         decoded->version = V;
 
         rdbKeySaveData _save, *save = &_save;
-        test_assert(rdbKeySaveDataInit(save,db,(decodedResult*)decoded) == 0/*INIT_SAVE_OK*/);
+        test_assert(rdbKeySaveWarmColdInit(save,db,(decodedResult*)decoded) == 0/*INIT_SAVE_OK*/);
         test_assert(rdbKeySaveStart(save,&rdb) == 0);
         decoded->subkey = ele2idx, decoded->rdbraw = ele2rdbraw;
         test_assert(rdbKeySave(save,&rdb,decoded) == 0 && save->saved == 2);
@@ -3544,7 +3495,7 @@ int swapListDataTest(int argc, char *argv[], int accurate) {
         sdsfree(subkey), sdsfree(subraw);
 
         test_assert(load->loaded_fields == 3);
-        test_assert(load->object_type == OBJ_LIST);
+        test_assert(load->swap_type == SWAP_TYPE_LIST);
 
         sdsfree(rdbwarm);
         sdsfree(metakey), sdsfree(metaval);
@@ -3584,11 +3535,11 @@ int swapListDataTest(int argc, char *argv[], int accurate) {
         decoded_meta->cf = META_CF;
         decoded_meta->extend = encodeListMeta(coldlm);
         decoded_meta->expire = -1;
-        decoded_meta->object_type = OBJ_LIST;
+        decoded_meta->swap_type = SWAP_TYPE_LIST;
         decoded_meta->version = V;
 
         rdbKeySaveData _save, *save = &_save;
-        test_assert(rdbKeySaveDataInit(save,db,(decodedResult*)decoded_meta) == 0/*INIT_SAVE_OK*/);
+        test_assert(rdbKeySaveWarmColdInit(save,db,(decodedResult*)decoded_meta) == 0/*INIT_SAVE_OK*/);
         decodedResultDeinit((decodedResult*)decoded_meta);
 
         decodedData _decoded, *decoded = &_decoded;
@@ -3652,7 +3603,7 @@ int swapListDataTest(int argc, char *argv[], int accurate) {
         sdsfree(subkey), sdsfree(subraw);
 
         test_assert(load->loaded_fields == 3);
-        test_assert(load->object_type == OBJ_LIST);
+        test_assert(load->swap_type == SWAP_TYPE_LIST);
 
         sdsfree(rdbcold);
         sdsfree(metakey), sdsfree(metaval);

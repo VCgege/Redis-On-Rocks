@@ -9,6 +9,10 @@ start_server {tags {"rordb replication"} overrides {}} {
         $master config set swap-debug-evict-keys 0; # evict manually
         $slave  config set swap-debug-evict-keys 0; # evict manually
 
+        set old_swap_max_subkeys [lindex [r config get swap-evict-step-max-subkeys] 1]
+        $master config set swap-evict-step-max-subkeys 6
+        $slave config set swap-evict-step-max-subkeys 6
+
         test {data is consistent using fullresync by rordb} {
             # string
             $master set mystring0 myval0
@@ -41,10 +45,45 @@ start_server {tags {"rordb replication"} overrides {}} {
             $master expireat mylist2 $expire_time
             $master swap.evict mylist1 mylist2
 
+            # bitmap mybitmap0 mybitmap1 mybitmap2 are no more than 6 subkeys, could be evicted once
+            $master setbit mybitmap0 32767 1
+            $master setbit mybitmap0 65535 1
+            $master setbit mybitmap0 98303 1
+            $master setbit mybitmap0 131071 1
+            $master setbit mybitmap0 163839 1
+
+            $master setbit mybitmap1 32767 1
+            $master setbit mybitmap1 65535 1
+            $master setbit mybitmap1 98303 1
+            $master setbit mybitmap1 131071 1
+            $master setbit mybitmap1 163839 1
+
+            $master setbit mybitmap2 32767 1
+            $master setbit mybitmap2 65535 1
+            $master setbit mybitmap2 98303 1
+            $master setbit mybitmap2 131071 1
+            $master setbit mybitmap2 163839 1
+            
+            $master setbit mybitmap3 32767 1
+            $master setbit mybitmap3 65535 1
+            $master setbit mybitmap3 98303 1
+            $master setbit mybitmap3 131071 1
+            $master setbit mybitmap3 163839 1
+            $master setbit mybitmap3 196607 1
+            $master setbit mybitmap3 229375 1
+            $master setbit mybitmap3 262143 1
+            $master setbit mybitmap3 294911 1
+            $master setbit mybitmap3 327679 1
+            $master setbit mybitmap3 335871 1
+
+            # mybitmap0 is pure hot, mybitmap1 mybitmap2 is cold, mybitmap3 is warm
+            $master expireat mybitmap2 $expire_time
+            $master swap.evict mybitmap1 mybitmap2 mybitmap3
+
             $slave slaveof $master_host $master_port
             wait_for_sync $slave
 
-            assert_equal [$slave dbsize] 15
+            assert_equal [$slave dbsize] 19
             # string
             assert [object_is_hot $slave mystring0]
             assert_equal [$slave get mystring0] myval0
@@ -85,7 +124,20 @@ start_server {tags {"rordb replication"} overrides {}} {
             assert [object_is_cold $slave mylist2]
             assert {[$slave ttl mylist2] > 0}
             assert_equal [$slave lrange mylist2 0 -1] {0 1 a b}
+            # bitmap
+            assert [object_is_hot $slave mybitmap0]
+            assert_equal [$slave bitcount mybitmap0] {5}
+            assert [object_is_cold $slave mybitmap1]
+            assert_equal [$slave bitcount mybitmap1] {5}
+            assert [object_is_cold $slave mybitmap2]
+            assert {[$slave ttl mybitmap2] > 0}
+            assert_equal [$slave bitcount mybitmap2] {5}
+
+            assert_equal [object_meta_pure_cold_subkeys_num $slave mybitmap3] 6
         }
+
+        $master config set swap-evict-step-max-subkeys $old_swap_max_subkeys
+        $slave config set swap-evict-step-max-subkeys $old_swap_max_subkeys
     }
 }
 

@@ -60,7 +60,7 @@ proc object_is_dirty {r key} {
 
 proc object_is_cold {r key} {
     set str [$r swap object $key]
-    if { [swap_object_property $str value at] == "" && [swap_object_property $str cold_meta object_type] != "" } {
+    if { [swap_object_property $str value at] == "" && [swap_object_property $str cold_meta swap_type] != "" } {
         set _ 1
     } else {
         set _ 0
@@ -69,7 +69,7 @@ proc object_is_cold {r key} {
 
 proc object_is_warm {r key} {
     set str [$r swap object $key]
-    if { [swap_object_property $str value at] != "" && [swap_object_property $str hot_meta object_type] != ""} {
+    if { [swap_object_property $str value at] != "" && [swap_object_property $str hot_meta swap_type] != ""} {
         set _ 1
     } else {
         set _ 0
@@ -79,16 +79,22 @@ proc object_is_warm {r key} {
 proc object_is_hot {r key} {
     set str [$r swap object $key]
     if {[swap_object_property $str value at] != "" } {
-        set om_type [swap_object_property $str hot_meta object_type]
-        if {$om_type == ""} {
+        set sw_type [swap_object_property $str hot_meta swap_type]
+        if {$sw_type == ""} {
             # no hot meta
             set _ 1
-        } elseif {$om_type == 0} {
+        } elseif {$sw_type == 0} {
             # string
             set _ 0
-        } elseif {$om_type == 1} {
+        } elseif {$sw_type == 1} {
             # list
             set _ 0
+        } elseif {$sw_type == 7} {
+            if {[swap_object_property $str hot_meta pure_cold_subkeys_num] == 0} {
+                set _ 1
+            } else {
+                set _ 0
+            }
         } else {
             # hash/set/zset
             if {[swap_object_property $str hot_meta len] == 0} {
@@ -102,9 +108,63 @@ proc object_is_hot {r key} {
     }
 }
 
+proc object_is_bitmap {r key} {
+    set str [$r swap object $key]
+    if {[swap_object_property $str value at] != "" } {
+        if { [swap_object_property $str hot_meta swap_type] == 7 } {
+            set _ 1
+        } else {
+            set _ 0
+        }
+    } else {
+        if { [swap_object_property $str cold_meta swap_type] == 7 } {
+            set _ 1
+        } else {
+            set _ 0
+        }
+    }
+}
+
+proc object_is_string {r key} {
+    set str [$r swap object $key]
+    if {[swap_object_property $str value at] != "" } {
+        if { [swap_object_property $str value type] == "string"} {
+            if { [swap_object_property $str hot_meta swap_type] == 7 } {
+                set _ 0
+            } else {
+                set _ 1
+            }
+        } else {
+            set _ 0
+        }
+    } else {
+        if { [swap_object_property $str cold_meta swap_type] == 0 } {
+            set _ 1
+        } else {
+            set _ 0
+        }
+    }
+}
+
+proc bitmap_object_is_pure_hot {r key} {
+    set str [$r swap object $key]
+    if {[swap_object_property $str value at] != "" } {
+        set sw_type [swap_object_property $str hot_meta swap_type]
+        if {$sw_type == 7} {
+            if { [swap_object_property $str cold_meta swap_type] == "" && [swap_object_property $str hot_meta marker] == "true" } {
+                set _ 1
+            }
+        } else {
+            set _ 0
+        }
+    } else {
+        set _ 0
+    }
+}
+
 proc object_not_persisted {r key} {
     set str [$r swap object $key]
-    if { [swap_object_property $str value at] != "" && [swap_object_property $str cold_meta object_type] == ""} {
+    if { [swap_object_property $str value at] != "" && [swap_object_property $str cold_meta swap_type] == ""} {
         set _ 1
     } else {
         set _ 0
@@ -187,6 +247,32 @@ proc object_meta_len {r key} {
     }
     if {$meta_len != ""} {
         set _ $meta_len
+    } else {
+        set _ 0
+    }
+}
+
+proc object_meta_pure_cold_subkeys_num {r key} {
+    set str [$r swap object $key]
+    set subkeys_num [swap_object_property $str hot_meta pure_cold_subkeys_num]
+    if {$subkeys_num == ""} {
+        set subkeys_num [swap_object_property $str cold_meta pure_cold_subkeys_num]
+    }
+    if {$subkeys_num != ""} {
+        set _ $subkeys_num
+    } else {
+        set _ 0
+    }
+}
+
+proc object_meta_subkey_size {r key} {
+    set str [$r swap object $key]
+    set subkey_size [swap_object_property $str hot_meta subkey_size]
+    if {$subkey_size == ""} {
+        set subkey_size [swap_object_property $str cold_meta subkey_size]
+    }
+    if {$subkey_size != ""} {
+        set _ $subkey_size
     } else {
         set _ 0
     }

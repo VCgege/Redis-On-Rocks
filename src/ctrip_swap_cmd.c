@@ -39,6 +39,7 @@ struct SwapDataTypeItem {
     {"swap_set", CMD_SWAP_DATATYPE_SET},
     {"swap_zset", CMD_SWAP_DATATYPE_ZSET},
     {"swap_list", CMD_SWAP_DATATYPE_LIST},
+    {"swap_bitmap", CMD_SWAP_DATATYPE_BITMAP},
     {NULL,0} /* Terminator. */
 };
 /* Given the category name the command returns the corresponding flag, or
@@ -127,12 +128,19 @@ void copyKeyRequest(keyRequest *dst, keyRequest *src) {
     case KEYREQUEST_TYPE_SAMPLE:
         dst->sp.count = src->sp.count;
         break;
+    case KEYREQUEST_TYPE_BTIMAP_OFFSET:
+        dst->bo.offset = src->bo.offset;
+        break;
+    case KEYREQUEST_TYPE_BTIMAP_RANGE:
+        dst->br.start = src->br.start;
+        dst->br.end = src->br.end;
+        break;
     default:
         break;
     }
 
-    dst->list_arg_rewrite[0] = src->list_arg_rewrite[0];
-    dst->list_arg_rewrite[1] = src->list_arg_rewrite[1];
+    dst->arg_rewrite[0] = src->arg_rewrite[0];
+    dst->arg_rewrite[1] = src->arg_rewrite[1];
 }
 
 void moveKeyRequest(keyRequest *dst, keyRequest *src) {
@@ -171,12 +179,19 @@ void moveKeyRequest(keyRequest *dst, keyRequest *src) {
     case KEYREQUEST_TYPE_SAMPLE:
         dst->sp.count = src->sp.count;
         break;
+    case KEYREQUEST_TYPE_BTIMAP_OFFSET:
+        dst->bo.offset = src->bo.offset;
+        break;
+    case KEYREQUEST_TYPE_BTIMAP_RANGE:
+        dst->br.start = src->br.start;
+        dst->br.end = src->br.end;
+        break;
     default:
         break;
     }
 
-    dst->list_arg_rewrite[0] = src->list_arg_rewrite[0];
-    dst->list_arg_rewrite[1] = src->list_arg_rewrite[1];
+    dst->arg_rewrite[0] = src->arg_rewrite[0];
+    dst->arg_rewrite[1] = src->arg_rewrite[1];
 }
 
 void keyRequestDeinit(keyRequest *key_request) {
@@ -210,6 +225,13 @@ void keyRequestDeinit(keyRequest *key_request) {
         break;
     case KEYREQUEST_TYPE_SAMPLE:
         key_request->sp.count = 0;
+        break;
+    case KEYREQUEST_TYPE_BTIMAP_OFFSET:
+        key_request->bo.offset = 0;
+        break;
+    case KEYREQUEST_TYPE_BTIMAP_RANGE:
+        key_request->br.start = 0;
+        key_request->br.end = 0;
         break;
     default:
         break;
@@ -270,8 +292,8 @@ keyRequest *getKeyRequestsAppendCommonResult(getKeyRequestsResult *result,
     key_request->dbid = dbid;
     key_request->trace = NULL;
     key_request->deferred = 0;
-    argRewriteRequestInit(key_request->list_arg_rewrite+0);
-    argRewriteRequestInit(key_request->list_arg_rewrite+1);
+    argRewriteRequestInit(key_request->arg_rewrite + 0);
+    argRewriteRequestInit(key_request->arg_rewrite + 1);
     return key_request;
 }
 
@@ -443,8 +465,8 @@ void getKeyRequests(client *c, getKeyRequestsResult *result) {
                 c->mstate.commands[i].swap_cmd = swap_cmd;
             }
             for (int j = prev_keyrequest_num; j < result->num; j++) {
-                result->key_requests[j].list_arg_rewrite[0].mstate_idx = i;
-                result->key_requests[j].list_arg_rewrite[1].mstate_idx = i;
+                result->key_requests[j].arg_rewrite[0].mstate_idx = i;
+                result->key_requests[j].arg_rewrite[1].mstate_idx = i;
             }
 
             if (c->cmd->proc == selectCommand) {
@@ -528,15 +550,10 @@ int getKeyRequestsOneDestKeyMultiSrcKeys(int dbid, struct redisCommand *cmd, rob
     for(int i = first_src_key; i <= last_src_key; i++) {
         incrRefCount(argv[i]);
         getKeyRequestsAppendSubkeyResult(result,REQUEST_LEVEL_KEY,argv[i], 0, NULL,
-                                   SWAP_IN,0, cmd->flags , dbid);
+                                   SWAP_IN,0, cmd->flags, dbid);
     }
 
     return 0;
-}
-
-int getKeyRequestsBitop(int dbid, struct redisCommand *cmd, robj **argv,
-        int argc, struct getKeyRequestsResult *result) {
-    return getKeyRequestsOneDestKeyMultiSrcKeys(dbid, cmd, argv, argc, result, 2, 3, -1);
 }
 
 int getKeyRequestsSort(int dbid, struct redisCommand *cmd, robj **argv,
@@ -698,11 +715,11 @@ void getKeyRequestsAppendRangeResult(getKeyRequestsResult *result, int level,
     key_request->type = KEYREQUEST_TYPE_RANGE;
     key_request->l.num_ranges = num_ranges;
     key_request->l.ranges = ranges;
-    key_request->list_arg_rewrite[0].arg_idx = arg_rewrite0;
-    key_request->list_arg_rewrite[1].arg_idx = arg_rewrite1;
+    key_request->arg_rewrite[0].arg_idx = arg_rewrite0;
+    key_request->arg_rewrite[1].arg_idx = arg_rewrite1;
 }
 
-/* There are no command with more that 2 ranges request. */
+/* There are no command with more than 2 ranges request. */
 #define GETKEYS_RESULT_SEGMENTS_MAX_LEN 2
 int _getKeyRequestsSingleKeyWithRangesGeneric(int dbid, int intention, int intention_flags, uint64_t cmd_flags,
             robj *key, struct getKeyRequestsResult *result, int arg_rewrite0,
@@ -726,7 +743,7 @@ int _getKeyRequestsSingleKeyWithRangesGeneric(int dbid, int intention, int inten
         ranges[i].reverse = reverse;
     }
 
-    getKeyRequestsAppendRangeResult(result,REQUEST_LEVEL_KEY,key,
+    getKeyRequestsAppendRangeResult(result, REQUEST_LEVEL_KEY,key,
             arg_rewrite0,arg_rewrite1,num_ranges,ranges,intention,
             intention_flags, cmd_flags, dbid);
 
@@ -739,7 +756,7 @@ int getKeyRequestsSwapBlockedLmove(int dbid, int intention, int intention_flags,
     va_list ap;
     va_start(ap, num_ranges);
     int code = _getKeyRequestsSingleKeyWithRangesGeneric(dbid, intention, intention_flags, cmd_flags,
-        key, result, arg_rewrite0, arg_rewrite1, num_ranges, ap);
+                                                         key, result, arg_rewrite0, arg_rewrite1, num_ranges, ap);
     va_end(ap);
     return code;
 }
@@ -754,6 +771,46 @@ int getKeyRequestsSingleKeyWithRanges(int dbid, struct redisCommand *cmd, robj *
         argv[key_index], result, arg_rewrite0, arg_rewrite1, num_ranges, ap);
     va_end(ap);
     return code;
+}
+
+int getKeyRequestsSingleKeyWithBitmapOffset(int dbid, struct redisCommand *cmd, robj **argv,
+         int argc, struct getKeyRequestsResult *result, int key_index,
+         int arg_idx_rewrite0, long offset) {
+
+    UNUSED(argc);
+    getKeyRequestsPrepareResult(result,result->num+1);
+
+    robj *key = argv[key_index];
+    incrRefCount(key);
+
+    keyRequest *key_request = getKeyRequestsAppendCommonResult(result,REQUEST_LEVEL_KEY,
+            key,cmd->intention,cmd->intention_flags,cmd->flags, dbid);
+
+    key_request->type = KEYREQUEST_TYPE_BTIMAP_OFFSET;
+    key_request->bo.offset = offset;
+    key_request->arg_rewrite[0].arg_idx = arg_idx_rewrite0;
+
+    return 0;
+}
+
+int getKeyRequestsSingleKeyWithBitmapRange(int dbid, struct redisCommand *cmd, robj **argv,
+         int argc, struct getKeyRequestsResult *result, int key_index,
+        long long start, long long end) {
+
+    UNUSED(argc);
+    getKeyRequestsPrepareResult(result,result->num+1);
+
+    robj *key = argv[key_index];
+    incrRefCount(key);
+
+    keyRequest *key_request = getKeyRequestsAppendCommonResult(result,REQUEST_LEVEL_KEY,
+            key,cmd->intention,cmd->intention_flags,cmd->flags, dbid);
+
+    key_request->type = KEYREQUEST_TYPE_BTIMAP_RANGE;
+    key_request->br.start = start;
+    key_request->br.end = end;
+
+    return 0;
 }
 
 int getKeyRequestsLpop(int dbid, struct redisCommand *cmd, robj **argv,
@@ -1074,8 +1131,8 @@ static inline void getKeyRequestsGtidArgRewriteAdjust(
         struct getKeyRequestsResult *result, int orig_krs_num, int start_index) {
     for (int i = orig_krs_num; i < result->num; i++) {
         keyRequest *kr = result->key_requests+i;
-        if (kr->list_arg_rewrite[0].arg_idx > 0) kr->list_arg_rewrite[0].arg_idx += start_index;
-        if (kr->list_arg_rewrite[1].arg_idx > 0) kr->list_arg_rewrite[1].arg_idx += start_index;
+        if (kr->arg_rewrite[0].arg_idx > 0) kr->arg_rewrite[0].arg_idx += start_index;
+        if (kr->arg_rewrite[1].arg_idx > 0) kr->arg_rewrite[1].arg_idx += start_index;
     }
 }
 
@@ -1152,6 +1209,77 @@ int getKeyRequestsDebug(int dbid, struct redisCommand *cmd, robj **argv,
         return getKeyRequestsNone(dbid,cmd,argv,argc,result);
     }
 }
+
+int getKeyRequestsSetbit(int dbid, struct redisCommand *cmd, robj **argv,
+                         int argc, struct getKeyRequestsResult *result) {
+    long long offset;
+    if (getLongLongFromObject(argv[2],&offset) != C_OK) return -1;
+    getKeyRequestsSingleKeyWithBitmapOffset(dbid,cmd,argv,argc,
+                                      result,1,2,
+                                      offset);
+    return 0;
+}
+
+int getKeyRequestsGetbit(int dbid, struct redisCommand *cmd, robj **argv,
+                         int argc, struct getKeyRequestsResult *result) {
+    long long offset;
+    if (getLongLongFromObject(argv[2],&offset) != C_OK) return -1;
+    getKeyRequestsSingleKeyWithBitmapOffset(dbid,cmd,argv,argc,
+            result,1,2,offset);
+    return 0;
+}
+
+int getKeyRequestsBitcount(int dbid, struct redisCommand *cmd, robj **argv,
+                         int argc, struct getKeyRequestsResult *result) {
+    long long start, end;
+
+    if (argc < 4) {
+        /* BITCOUNT key [start end], both start and end may not exist. */
+        getKeyRequestsSingleKey(result,argv[1],SWAP_IN,0,cmd->flags,dbid);
+    } else {
+        if (getLongLongFromObject(argv[2],&start) != C_OK) return -1;
+        if (getLongLongFromObject(argv[3],&end) != C_OK) return -1;
+        getKeyRequestsSingleKeyWithBitmapRange(dbid,cmd,argv,argc,
+                result,1,start,end);
+    }
+    return 0;
+}
+
+int getKeyRequestsBitpos(int dbid, struct redisCommand *cmd, robj **argv,
+                         int argc, struct getKeyRequestsResult *result) {
+    long long start, end;
+    /* BITPOS key bit [start [end] ], start or end may not exist.  */
+    if (argc <= 3) {
+        getKeyRequestsSingleKey(result,argv[1],SWAP_IN,0,cmd->flags,dbid);
+    } else if (argc == 4) {
+        if (getLongLongFromObject(argv[3],&start) != C_OK) return -1;
+
+        /* max size of bitmap is 512MB, last possible bit (equal to 2^32 - 1, UINT_MAX),
+         * start and end specify a byte index, UINT_MAX could cover the range. */
+        getKeyRequestsSingleKeyWithBitmapRange(dbid,cmd,argv,argc,
+                result,1,start,UINT_MAX);
+    } else {
+        if (getLongLongFromObject(argv[3],&start) != C_OK) return -1;
+        if (getLongLongFromObject(argv[4],&end) != C_OK) return -1;
+        getKeyRequestsSingleKeyWithBitmapRange(dbid,cmd,argv,argc,
+                result,1,start,end);
+    }
+    return 0;
+}
+
+int getKeyRequestsBitop(int dbid, struct redisCommand *cmd, robj **argv,
+                        int argc, struct getKeyRequestsResult *result) {
+    return getKeyRequestsOneDestKeyMultiSrcKeys(dbid, cmd, argv, argc, result, 2, 3, -1);
+}
+
+int getKeyRequestsBitField(int dbid, struct redisCommand *cmd, robj **argv,
+                         int argc, struct getKeyRequestsResult *result) {
+
+    UNUSED(argc);
+    getKeyRequestsSingleKey(result,argv[1],cmd->intention,cmd->intention_flags,cmd->flags,dbid);
+    return 0;
+}
+
 
 #define GET_KEYREQUESTS_MEMORY_MUL 4
 
@@ -1452,8 +1580,8 @@ int swapCmdTest(int argc, char *argv[], int accurate) {
         test_assert(result.key_requests[2].dbid == 10);
         test_assert(result.key_requests[2].l.num_ranges == 1);
         test_assert(result.key_requests[2].l.ranges[0].start == 3 && result.key_requests[2].l.ranges[0].end == 3);
-        test_assert(result.key_requests[2].list_arg_rewrite[0].mstate_idx == 2);
-        test_assert(result.key_requests[2].list_arg_rewrite[0].arg_idx == 2);
+        test_assert(result.key_requests[2].arg_rewrite[0].mstate_idx == 2);
+        test_assert(result.key_requests[2].arg_rewrite[0].arg_idx == 2);
 
         test_assert(!strcmp(result.key_requests[3].key->ptr, "KEY1"));
         test_assert(result.key_requests[3].b.subkeys == NULL);
@@ -1478,8 +1606,8 @@ int swapCmdTest(int argc, char *argv[], int accurate) {
         test_assert(result.key_requests[6].dbid == 4);
         test_assert(result.key_requests[6].l.num_ranges == 1);
         test_assert(result.key_requests[6].l.ranges[0].start == 3 && result.key_requests[2].l.ranges[0].end == 3);
-        test_assert(result.key_requests[6].list_arg_rewrite[0].mstate_idx == 5);
-        test_assert(result.key_requests[6].list_arg_rewrite[0].arg_idx == 5);
+        test_assert(result.key_requests[6].arg_rewrite[0].mstate_idx == 5);
+        test_assert(result.key_requests[6].arg_rewrite[0].arg_idx == 5);
 
         test_assert(result.key_requests[7].dbid == 5);
         test_assert(result.key_requests[7].level == REQUEST_LEVEL_SVR);
@@ -1491,8 +1619,8 @@ int swapCmdTest(int argc, char *argv[], int accurate) {
         test_assert(result.key_requests[8].dbid == 10);
         test_assert(result.key_requests[8].l.num_ranges == 1);
         test_assert(result.key_requests[8].l.ranges[0].start == 3 && result.key_requests[2].l.ranges[0].end == 3);
-        test_assert(result.key_requests[8].list_arg_rewrite[0].mstate_idx == 7);
-        test_assert(result.key_requests[8].list_arg_rewrite[0].arg_idx == 4);
+        test_assert(result.key_requests[8].arg_rewrite[0].mstate_idx == 7);
+        test_assert(result.key_requests[8].arg_rewrite[0].arg_idx == 4);
 
         releaseKeyRequests(&result);
         getKeyRequestsFreeResult(&result);
@@ -1540,16 +1668,16 @@ int swapCmdTest(int argc, char *argv[], int accurate) {
         test_assert(result.key_requests[3].dbid == 1);
 
         test_assert(!strcmp(result.key_requests[4].key->ptr, "LIST"));
-        test_assert(result.key_requests[4].list_arg_rewrite[0].mstate_idx == 3);
-        test_assert(result.key_requests[4].list_arg_rewrite[0].arg_idx == 5);
+        test_assert(result.key_requests[4].arg_rewrite[0].mstate_idx == 3);
+        test_assert(result.key_requests[4].arg_rewrite[0].arg_idx == 5);
         test_assert(result.key_requests[4].dbid == 2);
 
         test_assert(!strcmp(result.key_requests[5].key->ptr, "HASH"));
         test_assert(result.key_requests[5].dbid == 3);
 
         test_assert(!strcmp(result.key_requests[6].key->ptr, "LIST"));
-        test_assert(result.key_requests[6].list_arg_rewrite[0].mstate_idx == 6);
-        test_assert(result.key_requests[6].list_arg_rewrite[0].arg_idx == 2);
+        test_assert(result.key_requests[6].arg_rewrite[0].mstate_idx == 6);
+        test_assert(result.key_requests[6].arg_rewrite[0].arg_idx == 2);
         test_assert(result.key_requests[6].dbid == 4);
 
         test_assert(!strcmp(result.key_requests[7].key->ptr, "KEY1"));
@@ -1559,8 +1687,8 @@ int swapCmdTest(int argc, char *argv[], int accurate) {
 
         test_assert(!strcmp(result.key_requests[9].key->ptr, "LIST"));
         test_assert(result.key_requests[9].dbid == 4);
-        test_assert(result.key_requests[9].list_arg_rewrite[0].mstate_idx == 8);
-        test_assert(result.key_requests[9].list_arg_rewrite[0].arg_idx == 4);
+        test_assert(result.key_requests[9].arg_rewrite[0].mstate_idx == 8);
+        test_assert(result.key_requests[9].arg_rewrite[0].arg_idx == 4);
 
         releaseKeyRequests(&result);
         getKeyRequestsFreeResult(&result);
