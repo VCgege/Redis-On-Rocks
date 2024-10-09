@@ -287,17 +287,13 @@ int scanExpireDbCycle(redisDb *db, int type, long long timelimit) {
             }
 
             if (server.swap_ttl_compact_enabled) {
-                atomicIncr(server.swap_ttl_compact_ctx->scanned_expires_count, 1);
-                if (server.swap_ttl_compact_ctx->scanned_expires_count % server.swap_ttl_compact_expire_added_gap) {
-                    int res = wtdigestAdd(server.swap_ttl_compact_ctx->expire_wt, expire_add, 1);
+                atomicIncr(server.swap_ttl_compact_ctx->expire_stats->scanned_expires_count, 1);
+                if (server.swap_ttl_compact_ctx->expire_stats->scanned_expires_count % server.swap_ttl_compact_expire_added_gap) {
+                    int res = wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, expire_add, 1);
                     if (res != 0) {
-                        atomicIncr(server.swap_ttl_compact_ctx->expire_wt_error, 1);
-                        wtdigestReset(server.swap_ttl_compact_ctx->expire_wt);
-                        server.swap_ttl_compact_ctx->sampled_expires_count = 0;
-                        server.swap_ttl_compact_ctx->scanned_expires_count = 0;
-                        server.swap_ttl_compact_ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_EXPIRE;
+                        swapExpireStatusProcessErr(server.swap_ttl_compact_ctx->expire_stats);
                     } else {
-                        atomicIncr(server.swap_ttl_compact_ctx->sampled_expires_count, 1);  
+                        atomicIncr(server.swap_ttl_compact_ctx->expire_stats->sampled_expires_count, 1);  
                     }
                 }
             }

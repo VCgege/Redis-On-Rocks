@@ -497,7 +497,7 @@ void genServerTtlCompactTask(void *result, void *pd, int errcode) {
     cfMetas *metas = result;
     serverAssert(metas->num == 1);
 
-    double sst_age_limit = server.swap_ttl_compact_ctx->sst_age_limit;
+    double sst_age_limit = server.swap_ttl_compact_ctx->expire_stats->expire_of_quantile;
     if (sst_age_limit == SWAP_TTL_COMPACT_INVALID_EXPIRE) {
         /* no need to generate task. */
         cfMetasFree(metas);
@@ -545,17 +545,47 @@ end:
     cfMetasFree(metas);
 }
 
+swapExpireStatus *swapExpireStatusNew() {
+
+    swapExpireStatus *stats = zmalloc(sizeof(swapExpireStatus));
+    stats->expire_wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
+    wtdigestSetWindow(stats->expire_wt, SWAP_TTL_COMPACT_DEFAULT_EXPIRE_WT_WINDOW);
+
+    stats->sampled_expires_count = 0;
+    stats->scanned_expires_count = 0;
+    stats->expire_of_quantile = SWAP_TTL_COMPACT_INVALID_EXPIRE;
+    stats->expire_wt_error = 0;
+    return stats;
+}
+
+void swapExpireStatusFree(swapExpireStatus *stats) {
+    if (stats->expire_wt) {
+        wtdigestDestroy(stats->expire_wt);
+    }
+    zfree(stats);
+}
+
+void swapExpireStatusProcessErr(swapExpireStatus *stats) {
+    atomicIncr(stats->expire_wt_error, 1);
+    wtdigestReset(stats->expire_wt);
+    stats->sampled_expires_count = 0;
+    stats->scanned_expires_count = 0;
+    stats->expire_of_quantile = SWAP_TTL_COMPACT_INVALID_EXPIRE;
+}
+
+void swapExpireStatusReset(swapExpireStatus *stats) {
+    stats->expire_wt_error = 0;
+    wtdigestReset(stats->expire_wt);
+    stats->sampled_expires_count = 0;
+    stats->scanned_expires_count = 0;
+    stats->expire_of_quantile = SWAP_TTL_COMPACT_INVALID_EXPIRE; 
+}
+
 swapTtlCompactCtx *swapTtlCompactCtxNew() {
     swapTtlCompactCtx *ctx = zcalloc(sizeof(swapTtlCompactCtx));
 
-    ctx->expire_wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
-    wtdigestSetWindow(ctx->expire_wt, SWAP_TTL_COMPACT_DEFAULT_EXPIRE_WT_WINDOW);
-
-    ctx->sampled_expires_count = 0;
-    ctx->scanned_expires_count = 0;
-    ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_EXPIRE;
     ctx->task = NULL;
-    ctx->expire_wt_error = 0;
+    ctx->expire_stats = swapExpireStatusNew();
     ctx->stat_compact_times = 0;
     ctx->stat_request_sst_count = 0;
     return ctx;
@@ -563,11 +593,11 @@ swapTtlCompactCtx *swapTtlCompactCtxNew() {
 
 void swapTtlCompactCtxFree(swapTtlCompactCtx *ctx) {
     if (ctx->task) {
-      compactTaskFree(ctx->task);
-      ctx->task = NULL;
+        compactTaskFree(ctx->task);
+        ctx->task = NULL;
     }
-    if (ctx->expire_wt) {
-      wtdigestDestroy(ctx->expire_wt);
+    if (ctx->expire_stats) {
+        swapExpireStatusFree(ctx->expire_stats);
     }
     zfree(ctx);
 }
@@ -594,10 +624,13 @@ void cfMetasFree(cfMetas *metas) {
 
 sds genSwapTtlCompactInfoString(sds info) {
     info = sdscatprintf(info,
-            "swap_ttl_compact:times=%llu, request_sst_count=%llu, expire_wt_error=%llu, sst_age_limit=%lf, sampled_expires_count=%llu\r\n",
-            server.swap_ttl_compact_ctx->stat_compact_times,server.swap_ttl_compact_ctx->stat_request_sst_count,
-            server.swap_ttl_compact_ctx->expire_wt_error,server.swap_ttl_compact_ctx->sst_age_limit,
-            server.swap_ttl_compact_ctx->sampled_expires_count);
+            "swap_ttl_compact:times=%llu, request_sst_count=%llu, expire_wt_error=%llu, \
+            expire_of_quantile=%lf, sampled_expires_count=%llu\r\n",
+            server.swap_ttl_compact_ctx->stat_compact_times,
+            server.swap_ttl_compact_ctx->stat_request_sst_count,
+            server.swap_ttl_compact_ctx->expire_stats->expire_wt_error,
+            server.swap_ttl_compact_ctx->expire_stats->expire_of_quantile,
+            server.swap_ttl_compact_ctx->expire_stats->sampled_expires_count);
     return info;
 }
 

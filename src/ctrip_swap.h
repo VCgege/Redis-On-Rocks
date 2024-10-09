@@ -1963,19 +1963,28 @@ void genServerTtlCompactTask(void *result, void *pd, int errcode);
 #define SWAP_TTL_COMPACT_INVALID_EXPIRE __DBL_MAX__
 #define SWAP_TTL_COMPACT_DEFAULT_EXPIRE_WT_WINDOW 86400 /* 24h */
 
-typedef struct swapTtlCompactCtx {
-    double sst_age_limit; /* milliseconds, master will pass it to slave */
+typedef struct swapExpireStatus {
+    double expire_of_quantile; /* milliseconds, master will pass it to slave */
     wtdigest *expire_wt; /* only in master, save in milliseconds */
-    compactTask *task; /* move to utilctx during serverCron. */
+    redisAtomic unsigned long long expire_wt_error;
     redisAtomic unsigned long long sampled_expires_count;
     redisAtomic unsigned long long scanned_expires_count; // wait del
-    redisAtomic unsigned long long expire_wt_error;
+} swapExpireStatus;
+
+typedef struct swapTtlCompactCtx {
+    compactTask *task; /* move to utilctx during serverCron. */
+    swapExpireStatus *expire_stats;
     redisAtomic unsigned long long stat_compact_times;
     redisAtomic unsigned long long stat_request_sst_count;
 } swapTtlCompactCtx;
 
 swapTtlCompactCtx *swapTtlCompactCtxNew();
 void swapTtlCompactCtxFree(swapTtlCompactCtx *ctx);
+
+swapExpireStatus *swapExpireStatusNew();
+void swapExpireStatusFree(swapExpireStatus *stats);
+void swapExpireStatusProcessErr(swapExpireStatus *stats);
+void swapExpireStatusReset(swapExpireStatus *stats);
 
 sds genSwapTtlCompactInfoString(sds info);
 

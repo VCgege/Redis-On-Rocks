@@ -52,7 +52,6 @@ wtdigest* wtdigestCreate(uint8_t num_buckets)
     for (uint8_t i = 0; i < num_buckets; i++) {
         wt->buckets[i] = td_new(DEFAULT_COMPRESSION);
         serverAssert(wt->buckets[i] != NULL);
-        td_reset(wt->buckets[i]);
     }
 
     wt->last_reset_time = time(NULL);
