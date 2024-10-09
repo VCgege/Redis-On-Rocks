@@ -2435,7 +2435,15 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                 /* percentile of expire_wt is valid */
                 double percentile = (double)server.swap_ttl_compact_expire_percentile / 100;
                 double res = wtdigestQuantile(server.swap_ttl_compact_ctx->expire_wt, percentile);
-                server.swap_ttl_compact_ctx->sst_age_limit = (res == WTD_INVALID_QUANTILE? SWAP_TTL_COMPACT_INVALID_EXPIRE:res);
+                if (res == WTD_INVALID_QUANTILE) {
+                    // unexpected err occured in expire_wt, which need to be reset
+                    wtdigestReset(server.swap_ttl_compact_ctx->expire_wt);
+                    server.swap_ttl_compact_ctx->sampled_expires_count = 0;
+                    server.swap_ttl_compact_ctx->scanned_expires_count = 0;
+                    server.swap_ttl_compact_ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_EXPIRE;
+                } else {
+                    server.swap_ttl_compact_ctx->sst_age_limit = res;
+                }
             } else {
                 serverLog(LL_NOTICE, "get sst_age_limit is invalid 2"); // wait del
                 server.swap_ttl_compact_ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_EXPIRE;

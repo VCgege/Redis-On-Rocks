@@ -144,7 +144,6 @@ double wtdigestQuantile(wtdigest* wt, double q)
     resetBucketsIfNeed(wt);
     double res = td_quantile(wt->buckets[wt->cur_read_index], q);
     if (IS_INVALID_QUANTILE(res)) {
-        wtdigestReset(wt);
         return WTD_INVALID_QUANTILE;
     }
     return res;
