@@ -291,6 +291,9 @@ int scanExpireDbCycle(redisDb *db, int type, long long timelimit) {
                     wtdigestAdd(server.swap_ttl_compact_ctx->expire_wt, expire_add, 1);
                     server.swap_ttl_compact_ctx->sampled_expires_count++;
                 }
+                if (server.swap_ttl_compact_ctx->scanned_expires_count % 97 == 0) {
+                    serverLog(LL_NOTICE, "expire_add is %lf", expire_add);
+                }
                 server.swap_ttl_compact_ctx->scanned_expires_count++;
             }
         }
