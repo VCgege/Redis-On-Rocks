@@ -32,6 +32,7 @@
 
 #define DEFAULT_COMPRESSION 100
 #define DEFAULT_WINDOW_SECONDS 3600
+#define IS_INVALID_QUANTILE(num) (isinf(num) || isnan(num))
 
 struct wtdigest_t {
     uint8_t num_buckets;
@@ -141,7 +142,12 @@ void wtdigestAdd(wtdigest* wt, double val, unsigned long long weight)
 double wtdigestQuantile(wtdigest* wt, double q)
 {
     resetBucketsIfNeed(wt);
-    return td_quantile(wt->buckets[wt->cur_read_index], q);
+    double res = td_quantile(wt->buckets[wt->cur_read_index], q);
+    if (IS_INVALID_QUANTILE(res)) {
+        wtdigestReset(wt);
+        return WTD_INVALID_QUANTILE;
+    }
+    return res;
 }
 
 long long wtdigestSize(wtdigest* wt)

@@ -30,9 +30,10 @@
 #define __CTRIP_WTDIGEST_H__
 
 #include <stdint.h>
+#include "math.h"
 
 #define WTD_DEFAULT_NUM_BUCKETS 6
-#define IS_INVALID_QUANTILE(num) (isinf(num) || isnan(num))
+#define WTD_INVALID_QUANTILE NAN
 
 /*
   Window Tdigest algorithm is based on tdigest(MergingDigest). There are td_num buckets 
