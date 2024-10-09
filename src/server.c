@@ -2434,16 +2434,10 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                 keys_num < server.swap_ttl_compact_ctx->sampled_expires_count) {
                 /* percentile of expire_wt is valid */
                 double percentile = (double)server.swap_ttl_compact_expire_percentile / 100;
-                double res = wtdigestQuantile(server.swap_ttl_compact_ctx->expire_wt, percentile);
-                if (res != SWAP_TTL_COMPACT_INVALID_EXPIRE) {
-                    server.swap_ttl_compact_ctx->sst_age_limit = (long long)res;
-                } else {
-                    serverLog(LL_NOTICE, "get sst_age_limit is invalid 1"); // wait del
-                    server.swap_ttl_compact_ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_SST_AGE_LIMIT;
-                }
+                server.swap_ttl_compact_ctx->sst_age_limit = wtdigestQuantile(server.swap_ttl_compact_ctx->expire_wt, percentile);
             } else {
                 serverLog(LL_NOTICE, "get sst_age_limit is invalid 2"); // wait del
-                server.swap_ttl_compact_ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_SST_AGE_LIMIT;
+                server.swap_ttl_compact_ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_EXPIRE;
             }
         }
     } else {
@@ -2451,11 +2445,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         wtdigestReset(server.swap_ttl_compact_ctx->expire_wt);
         server.swap_ttl_compact_ctx->sampled_expires_count = 0;
         server.swap_ttl_compact_ctx->scanned_expires_count = 0;
-        server.swap_ttl_compact_ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_SST_AGE_LIMIT;
+        server.swap_ttl_compact_ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_EXPIRE;
     }
 
     /* ttl compaction, produce task. */
-    if (server.swap_ttl_compact_enabled && (server.swap_ttl_compact_ctx->sst_age_limit != SWAP_TTL_COMPACT_INVALID_SST_AGE_LIMIT)) {
+    if (server.swap_ttl_compact_enabled && (server.swap_ttl_compact_ctx->sst_age_limit != SWAP_TTL_COMPACT_INVALID_EXPIRE)) {
         run_with_period(1000*60) {
             cfIndexes *idxes = cfIndexesNew();
             idxes->num = 1;

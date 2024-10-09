@@ -366,7 +366,7 @@ static rocksdb_level_metadata_t* getHighestLevelMetaWithSST(rocksdb_column_famil
     return level_meta;
 }
 
-static int getExpiredSstInfo(rocksdb_level_metadata_t* level_meta, long long sst_age_limit, uint *sst_index_arr, uint64_t *sst_age_arr) {
+static int getExpiredSstInfo(rocksdb_level_metadata_t* level_meta, double sst_age_limit, uint *sst_index_arr, uint64_t *sst_age_arr) {
 
     size_t level_sst_num = rocksdb_level_metadata_get_file_count(level_meta);
     int sst_recorded_num = 0;
@@ -384,7 +384,7 @@ static int getExpiredSstInfo(rocksdb_level_metadata_t* level_meta, long long sst
         time_t nowtimestamp;
         time(&nowtimestamp);
 
-        long long exist_time = nowtimestamp - create_time;
+        double exist_time = (double)(nowtimestamp - create_time);
         if (exist_time * 1000 <= sst_age_limit) {
             continue;
         }
@@ -497,8 +497,8 @@ void genServerTtlCompactTask(void *result, void *pd, int errcode) {
     cfMetas *metas = result;
     serverAssert(metas->num == 1);
 
-    long long sst_age_limit = server.swap_ttl_compact_ctx->sst_age_limit;
-    if (sst_age_limit == SWAP_TTL_COMPACT_INVALID_SST_AGE_LIMIT) {
+    double sst_age_limit = server.swap_ttl_compact_ctx->sst_age_limit;
+    if (sst_age_limit == SWAP_TTL_COMPACT_INVALID_EXPIRE) {
         /* no need to generate task. */
         cfMetasFree(metas);
         return;
@@ -553,7 +553,7 @@ swapTtlCompactCtx *swapTtlCompactCtxNew() {
 
     ctx->sampled_expires_count = 0;
     ctx->scanned_expires_count = 0;
-    ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_SST_AGE_LIMIT;
+    ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_EXPIRE;
     ctx->task = NULL;
     ctx->stat_compact_times = 0;
     ctx->stat_request_sst_count = 0;
@@ -593,7 +593,7 @@ void cfMetasFree(cfMetas *metas) {
 
 sds genSwapTtlCompactInfoString(sds info) {
     info = sdscatprintf(info,
-            "swap_ttl_compact:times=%llu, request_sst_count=%llu, sst_age_limit=%lld, sampled_expires_count=%llu\r\n",
+            "swap_ttl_compact:times=%llu, request_sst_count=%llu, sst_age_limit=%lf, sampled_expires_count=%llu\r\n",
             server.swap_ttl_compact_ctx->stat_compact_times,server.swap_ttl_compact_ctx->stat_request_sst_count,
             server.swap_ttl_compact_ctx->sst_age_limit,server.swap_ttl_compact_ctx->sampled_expires_count);
     return info;
