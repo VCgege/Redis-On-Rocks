@@ -997,8 +997,6 @@ int swapDataSetupBitmap(swapData *d, void **pdatactx);
 
 sds genSwapBitmapStringSwitchedInfoString(sds info);
 
-sds genSwapTtlCompactInfoString(sds info);
-
 /* Meta bitmap */
 /* meta != NULL, bitmap with hole, which means cold subkey, it is not entire bitmap in memory.
  * meta == NULL,  no hole in bitmap, it is entire bitmap in memory. */
@@ -1968,15 +1966,18 @@ void genServerTtlCompactTask(void *result, void *pd, int errcode);
 typedef struct swapTtlCompactCtx {
     double sst_age_limit; /* milliseconds, master will pass it to slave */
     wtdigest *expire_wt; /* only in master, save in milliseconds */
-    unsigned long long sampled_expires_count;
-    unsigned long long scanned_expires_count;
     compactTask *task; /* move to utilctx during serverCron. */
+    redisAtomic unsigned long long sampled_expires_count;
+    redisAtomic unsigned long long scanned_expires_count; // wait del
+    redisAtomic unsigned long long expire_wt_error;
     redisAtomic unsigned long long stat_compact_times;
     redisAtomic unsigned long long stat_request_sst_count;
 } swapTtlCompactCtx;
 
 swapTtlCompactCtx *swapTtlCompactCtxNew();
 void swapTtlCompactCtxFree(swapTtlCompactCtx *ctx);
+
+sds genSwapTtlCompactInfoString(sds info);
 
 /* Repl */
 int submitReplClientRequests(client *c);
