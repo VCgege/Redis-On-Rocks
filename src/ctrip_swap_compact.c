@@ -506,6 +506,7 @@ void genServerTtlCompactTask(void *result, void *pd, int errcode) {
 
     char *cf_name = rocksdb_column_family_metadata_get_name(metas->cf_meta[0]);
     serverAssert(strcmp(cf_name, "default") == 0);
+    zlibc_free(cf_name);
     rocksdb_column_family_metadata_t *default_meta = metas->cf_meta[0];
     rocksdb_level_metadata_t *level_meta = getHighestLevelMetaWithSST(default_meta);
     if (level_meta == NULL) {
@@ -586,6 +587,7 @@ void cfMetasFree(cfMetas *metas) {
     for (uint i = 0; i < metas->num; i++) {
         rocksdb_column_family_metadata_destroy(metas->cf_meta[i]);
     }
+    zfree(metas->cf_meta);
     zfree(metas);
 }
 
