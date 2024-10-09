@@ -550,8 +550,8 @@ swapTtlCompactCtx *swapTtlCompactCtxNew() {
     ctx->expire_wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
     wtdigestSetWindow(ctx->expire_wt, SWAP_TTL_COMPACT_DEFAULT_EXPIRE_WT_WINDOW);
 
-    ctx->added_expire_count = 0;
-    ctx->scanned_expire_count = 0;
+    ctx->sampled_expires_count = 0;
+    ctx->scanned_expires_count = 0;
     ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_SST_AGE_LIMIT;
     ctx->task = NULL;
     ctx->stat_compact_times = 0;
@@ -591,8 +591,9 @@ void cfMetasFree(cfMetas *metas) {
 
 sds genSwapTtlCompactInfoString(sds info) {
     info = sdscatprintf(info,
-            "swap_ttl_compact:times=%llu, request_sst_count=%llu, sst_age_limit=%lld\r\n",
-            server.swap_ttl_compact_ctx->stat_compact_times,server.swap_ttl_compact_ctx->stat_request_sst_count,server.swap_ttl_compact_ctx->sst_age_limit);
+            "swap_ttl_compact:times=%llu, request_sst_count=%llu, sst_age_limit=%lld, sampled_expires_count=%llu\r\n",
+            server.swap_ttl_compact_ctx->stat_compact_times,server.swap_ttl_compact_ctx->stat_request_sst_count,
+            server.swap_ttl_compact_ctx->sst_age_limit,server.swap_ttl_compact_ctx->sampled_expires_count);
     return info;
 }
 

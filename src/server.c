@@ -2431,13 +2431,10 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
             unsigned long long keys_num = (unsigned long long)dbTotalServerKeyCount();
             if (wtdigestGetRunnningTime(expire_wt) > wtdigestGetWindow(expire_wt) ||
-                keys_num < server.swap_ttl_compact_ctx->added_expire_count) {
+                keys_num < server.swap_ttl_compact_ctx->sampled_expires_count) {
                 /* percentile of expire_wt is valid */
                 double percentile = (double)server.swap_ttl_compact_expire_percentile / 100;
                 double res = wtdigestQuantile(server.swap_ttl_compact_ctx->expire_wt, percentile);
-
-                serverLog(LL_NOTICE, "get sst_age_limit is %lf", res); // wait del
-
                 if (res != SWAP_TTL_COMPACT_INVALID_EXPIRE) {
                     server.swap_ttl_compact_ctx->sst_age_limit = (long long)res;
                 } else {
@@ -2452,8 +2449,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     } else {
         serverLog(LL_NOTICE, "get sst_age_limit is invalid 3"); // wait del
         wtdigestReset(server.swap_ttl_compact_ctx->expire_wt);
-        server.swap_ttl_compact_ctx->added_expire_count = 0;
-        server.swap_ttl_compact_ctx->scanned_expire_count = 0;
+        server.swap_ttl_compact_ctx->sampled_expires_count = 0;
+        server.swap_ttl_compact_ctx->scanned_expires_count = 0;
         server.swap_ttl_compact_ctx->sst_age_limit = SWAP_TTL_COMPACT_INVALID_SST_AGE_LIMIT;
     }
 

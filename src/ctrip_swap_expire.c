@@ -287,14 +287,11 @@ int scanExpireDbCycle(redisDb *db, int type, long long timelimit) {
             }
 
             if (server.swap_ttl_compact_enabled) {
-                if (server.swap_ttl_compact_ctx->scanned_expire_count % server.swap_ttl_compact_expire_added_gap) {
+                if (server.swap_ttl_compact_ctx->scanned_expires_count % server.swap_ttl_compact_expire_added_gap) {
                     wtdigestAdd(server.swap_ttl_compact_ctx->expire_wt, expire_add, 1);
-                    server.swap_ttl_compact_ctx->added_expire_count++;
+                    server.swap_ttl_compact_ctx->sampled_expires_count++;
                 }
-                if (server.swap_ttl_compact_ctx->scanned_expire_count % 97) {
-                    serverLog(LL_NOTICE, "expire_add is %lf", expire_add);
-                }
-                server.swap_ttl_compact_ctx->scanned_expire_count++;
+                server.swap_ttl_compact_ctx->scanned_expires_count++;
             }
         }
 
