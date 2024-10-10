@@ -286,6 +286,10 @@ int scanExpireDbCycle(redisDb *db, int type, long long timelimit) {
                 expire_add = SWAP_TTL_COMPACT_INVALID_EXPIRE;
             }
 
+            serverLog(LL_NOTICE, "meta->expire is %lld", meta->expire);
+            serverLog(LL_NOTICE, "nowtime is %lld", nowtime);
+            serverLog(LL_NOTICE, "expire_add is %lf", expire_add);
+
             if (server.swap_ttl_compact_enabled) {
                 atomicIncr(server.swap_ttl_compact_ctx->expire_stats->scanned_expires_count, 1);
                 if (server.swap_ttl_compact_ctx->expire_stats->scanned_expires_count % server.swap_ttl_compact_expire_added_gap) {
