@@ -298,9 +298,8 @@ int scanExpireDbCycle(redisDb *db, int type, long long timelimit) {
                     int res = wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, expire_add, 1);
                     if (res != 0) {
                         swapExpireStatusProcessErr(server.swap_ttl_compact_ctx->expire_stats);
-                    } else {
-                        atomicIncr(server.swap_ttl_compact_ctx->expire_stats->sampled_expires_count, 1);  
                     }
+                    atomicIncr(server.swap_ttl_compact_ctx->expire_stats->sampled_expires_count, 1);  
                 }
             }
         }

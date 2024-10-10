@@ -567,9 +567,6 @@ void swapExpireStatusFree(swapExpireStatus *stats) {
 
 void swapExpireStatusProcessErr(swapExpireStatus *stats) {
     atomicIncr(stats->expire_wt_error, 1);
-    wtdigestReset(stats->expire_wt);
-    stats->sampled_expires_count = 0;
-    stats->scanned_expires_count = 0;
     stats->expire_of_quantile = SWAP_TTL_COMPACT_INVALID_EXPIRE;
 }
 
