@@ -2437,7 +2437,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                 double res = wtdigestQuantile(expire_wt, percentile);
                 if (IS_INVALID_QUANTILE(res)) {
                     swapExpireStatusProcessErr(server.swap_ttl_compact_ctx->expire_stats);
-                    abort();
+                    serverLog(LL_NOTICE, "res is %ld", res);
                 } else {
                     server.swap_ttl_compact_ctx->expire_stats->expire_of_quantile = res;
                 }

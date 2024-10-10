@@ -1960,7 +1960,7 @@ void compactTaskAppend(compactTask *task, compactKeyRange *key_range);
 void rocksdbCompactRangeTaskDone(void *result, void *pd, int errcode);
 void genServerTtlCompactTask(void *result, void *pd, int errcode);
 
-#define SWAP_TTL_COMPACT_INVALID_EXPIRE __DBL_MAX__
+#define SWAP_TTL_COMPACT_INVALID_EXPIRE ((double)INT_MAX)
 #define SWAP_TTL_COMPACT_DEFAULT_EXPIRE_WT_WINDOW 86400 /* 24h */
 
 typedef struct swapExpireStatus {

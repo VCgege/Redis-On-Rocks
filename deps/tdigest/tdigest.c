@@ -158,7 +158,7 @@ int td_init(double compression, td_histogram_t **result) {
         return 1;
     }
     td_histogram_t *histogram;
-    histogram = (td_histogram_t *)__td_calloc(sizeof(td_histogram_t));
+    histogram = (td_histogram_t *)__td_malloc(sizeof(td_histogram_t));
     if (!histogram) {
         return 1;
     }
