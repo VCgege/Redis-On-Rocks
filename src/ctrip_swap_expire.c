@@ -286,21 +286,18 @@ int scanExpireDbCycle(redisDb *db, int type, long long timelimit) {
                 expire_add = SWAP_TTL_COMPACT_INVALID_EXPIRE;
             }
 
-            if (IS_INVALID_QUANTILE(expire_add)) {
+            if (IS_INVALID_QUANTILE(expire_add)) { // for debug, wait del
                 serverLog(LL_NOTICE, "meta->expire is %lld", meta->expire);
                 serverLog(LL_NOTICE, "nowtime is %lld", nowtime);
                 serverLog(LL_NOTICE, "expire_add is %lf", expire_add);
             }
 
             if (server.swap_ttl_compact_enabled) {
-                atomicIncr(server.swap_ttl_compact_ctx->expire_stats->scanned_expires_count, 1);
-                if (server.swap_ttl_compact_ctx->expire_stats->scanned_expires_count % server.swap_ttl_compact_expire_added_gap) {
-                    int res = wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, expire_add, 1);
-                    if (res != 0) {
-                        swapExpireStatusProcessErr(server.swap_ttl_compact_ctx->expire_stats);
-                    }
-                    atomicIncr(server.swap_ttl_compact_ctx->expire_stats->sampled_expires_count, 1);  
+                int res = wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, expire_add, 1);
+                if (res != 0) {
+                    swapExpireStatusProcessErr(server.swap_ttl_compact_ctx->expire_stats);
                 }
+                atomicIncr(server.swap_ttl_compact_ctx->expire_stats->sampled_expires_count, 1);  
             }
         }
 

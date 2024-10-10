@@ -1968,7 +1968,6 @@ typedef struct swapExpireStatus {
     wtdigest *expire_wt; /* only in master, save in milliseconds */
     redisAtomic unsigned long long expire_wt_error;
     redisAtomic unsigned long long sampled_expires_count;
-    redisAtomic unsigned long long scanned_expires_count; // wait del
 } swapExpireStatus;
 
 typedef struct swapTtlCompactCtx {

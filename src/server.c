@@ -2428,21 +2428,22 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     if (server.swap_ttl_compact_enabled) {
         run_with_period(1000*60) {
             wtdigest *expire_wt = server.swap_ttl_compact_ctx->expire_stats->expire_wt;
+            swapExpireStatus *expire_stats = server.swap_ttl_compact_ctx->expire_stats;
 
             unsigned long long keys_num = (unsigned long long)dbTotalServerKeyCount();
             if (wtdigestGetRunnningTime(expire_wt) > wtdigestGetWindow(expire_wt) ||
-                keys_num < server.swap_ttl_compact_ctx->expire_stats->sampled_expires_count) {
+                keys_num < expire_stats->sampled_expires_count) {
                 /* percentile of expire_wt is valid */
                 double percentile = (double)server.swap_ttl_compact_expire_percentile / 100;
                 double res = wtdigestQuantile(expire_wt, percentile);
-                if (IS_INVALID_QUANTILE(res)) {  // wait modify
-                    swapExpireStatusProcessErr(server.swap_ttl_compact_ctx->expire_stats);
-                    serverLog(LL_NOTICE, "res is %lf", res);
+                if (IS_INVALID_QUANTILE(res)) {
+                    swapExpireStatusProcessErr(expire_stats);
+                    serverLog(LL_NOTICE, "res is %lf", res);   // for debug, wait del
                 } else {
-                    server.swap_ttl_compact_ctx->expire_stats->expire_of_quantile = res;
+                    expire_stats->expire_of_quantile = res;
                 }
             } else {
-                server.swap_ttl_compact_ctx->expire_stats->expire_of_quantile = SWAP_TTL_COMPACT_INVALID_EXPIRE;
+                expire_stats->expire_of_quantile = SWAP_TTL_COMPACT_INVALID_EXPIRE;
             }
         }
     } else {

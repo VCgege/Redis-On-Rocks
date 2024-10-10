@@ -552,7 +552,6 @@ swapExpireStatus *swapExpireStatusNew() {
     wtdigestSetWindow(stats->expire_wt, SWAP_TTL_COMPACT_DEFAULT_EXPIRE_WT_WINDOW);
 
     stats->sampled_expires_count = 0;
-    stats->scanned_expires_count = 0;
     stats->expire_of_quantile = SWAP_TTL_COMPACT_INVALID_EXPIRE;
     stats->expire_wt_error = 0;
     return stats;
@@ -574,7 +573,6 @@ void swapExpireStatusReset(swapExpireStatus *stats) {
     stats->expire_wt_error = 0;
     wtdigestReset(stats->expire_wt);
     stats->sampled_expires_count = 0;
-    stats->scanned_expires_count = 0;
     stats->expire_of_quantile = SWAP_TTL_COMPACT_INVALID_EXPIRE; 
 }
 
