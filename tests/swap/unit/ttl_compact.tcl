@@ -62,4 +62,43 @@ start_server {tags {"ttl compact"}} {
     }
 
     r flushdb
-} 
+}
+
+start_server {tags {"master propagate expire test"} overrides {save ""}} {
+
+    start_server {overrides {swap-repl-rordb-sync {no} swap-debug-evict-keys {0} swap-swap-info-slave-period {60}}} {
+
+        set master_host [srv 0 host]
+        set master_port [srv 0 port]
+        set master [srv 0 client]
+        set slave_host [srv -1 host]
+        set slave_port [srv -1 port]
+        set slave [srv -1 client]
+        $slave slaveof $master_host $master_port
+        wait_for_sync $slave
+        test {ttl compact master slave propagate check} {
+
+            for {set j 0} { $j < 100} {incr j} {
+                set mybitmap "mybitmap-$j"
+
+                # bitmap is spilt as subkey of 4KB by default
+                $master setbit $mybitmap 32768 1
+                $master expire $mybitmap 10
+
+                $master swap.evict $mybitmap
+                wait_key_cold $master $mybitmap
+            } 
+
+            # more than 60s
+            after 100000
+            wait_for_ofs_sync $master $slave
+
+            set expire_of_quantile1 [get_info_property $master Swap swap_ttl_compact expire_of_quantile]
+            set expire_of_quantile2 [get_info_property $slave Swap swap_ttl_compact expire_of_quantile]
+
+            assert_lessthan $expire_of_quantile1 10000
+            assert_equal $expire_of_quantile1 $expire_of_quantile2
+
+        }
+    }
+}

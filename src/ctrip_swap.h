@@ -1960,14 +1960,14 @@ void compactTaskAppend(compactTask *task, compactKeyRange *key_range);
 void rocksdbCompactRangeTaskDone(void *result, void *pd, int errcode);
 void genServerTtlCompactTask(void *result, void *pd, int errcode);
 
-#define SWAP_TTL_COMPACT_INVALID_EXPIRE ((double)LONG_LONG_MAX) /* expire or pexpire is long long int. */
+#define SWAP_TTL_COMPACT_INVALID_EXPIRE LONG_LONG_MAX /* expire or pexpire is long long int. */
 #define SWAP_TTL_COMPACT_DEFAULT_EXPIRE_WT_WINDOW 86400 /* 24h */
 
 typedef struct swapExpireStatus {
-    double expire_of_quantile; /* milliseconds, master will pass it to slave */
+    long long expire_of_quantile; /* milliseconds, master will pass it to slave, both in master and slave, sub-slave */
     wtdigest *expire_wt; /* only in master, save in milliseconds */
-    redisAtomic unsigned long long expire_wt_error;
-    redisAtomic unsigned long long sampled_expires_count;
+    redisAtomic unsigned long long expire_wt_error; /* only in master */
+    redisAtomic unsigned long long sampled_expires_count; /* only in master */
 } swapExpireStatus;
 
 typedef struct swapTtlCompactCtx {
@@ -1986,6 +1986,15 @@ void swapExpireStatusProcessErr(swapExpireStatus *stats);
 void swapExpireStatusReset(swapExpireStatus *stats);
 
 sds genSwapTtlCompactInfoString(sds info);
+
+/* swap info cmd */
+#define SWAP_INFO_SUPPORTED_YES 0
+#define SWAP_INFO_SUPPORTED_NO 1
+#define SWAP_INFO_SUPPORTED_AUTO 2
+
+void swapInfoCommand(client *c);
+
+void swapPropagateSwapInfo();
 
 /* Repl */
 int submitReplClientRequests(client *c);

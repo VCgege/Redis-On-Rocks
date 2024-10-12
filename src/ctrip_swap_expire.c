@@ -277,23 +277,17 @@ int scanExpireDbCycle(redisDb *db, int type, long long timelimit) {
             gettimeofday(&tv, NULL);
             long long nowtime = tv.tv_sec * 1000 + tv.tv_usec / 1000;
 
-            double expire_add;
+            long long expire_add;
             if (meta->expire != -1) {
                 expireCandidatesAdd(scan_expire->candidates,
                         meta->expire,meta->key);
-                expire_add = (double)(meta->expire - nowtime);
+                expire_add = meta->expire - nowtime;
             } else {
                 expire_add = SWAP_TTL_COMPACT_INVALID_EXPIRE;
             }
 
-            if (IS_INVALID_QUANTILE(expire_add)) { // for debug, wait del
-                serverLog(LL_NOTICE, "meta->expire is %lld", meta->expire);
-                serverLog(LL_NOTICE, "nowtime is %lld", nowtime);
-                serverLog(LL_NOTICE, "expire_add is %lf", expire_add);
-            }
-
             if (server.swap_ttl_compact_enabled) {
-                int res = wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, expire_add, 1);
+                int res = wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, (double)expire_add, 1);
                 if (res != 0) {
                     swapExpireStatusProcessErr(server.swap_ttl_compact_ctx->expire_stats);
                 }

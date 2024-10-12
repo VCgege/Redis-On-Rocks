@@ -620,7 +620,7 @@ void cfMetasFree(cfMetas *metas) {
 sds genSwapTtlCompactInfoString(sds info) {
     info = sdscatprintf(info,
             "swap_ttl_compact:times=%llu, request_sst_count=%llu, expire_wt_error=%llu,"
-            "expire_of_quantile=%lf, sampled_expires_count=%llu\r\n",
+            "expire_of_quantile=%lld, sampled_expires_count=%llu\r\n",
             server.swap_ttl_compact_ctx->stat_compact_times,
             server.swap_ttl_compact_ctx->stat_request_sst_count,
             server.swap_ttl_compact_ctx->expire_stats->expire_wt_error,
@@ -1059,8 +1059,8 @@ compactTask *mockTtlCompactTask() {
         compactTaskFree(task1);
 
         compactTask *task2 = mockTtlCompactTask();
-        test_assert(task1->count == 1);
-        test_assert(task1->capacity == 1);
+        test_assert(task2->count == 1);
+        test_assert(task2->capacity == 1);
         compactTaskFree(task2);
     }
 
