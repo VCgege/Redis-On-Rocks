@@ -1,8 +1,8 @@
-start_server {tags {"ttl compact"}} {
-    r config set swap-debug-evict-keys 0
-    r config set swap-ttl-compact-period 1
-    r config set swap-sst-age-limit-refresh-period 1
-    r config set swap-swap-info-slave-period 1
+start_server {tags {"ttl compact 0"} 
+    overrides {swap-debug-evict-keys {0} 
+               swap-ttl-compact-period {1} 
+               swap-sst-age-limit-refresh-period {1} 
+               swap-swap-info-slave-period {1}}}  {
 
     # ttl compact will not work on L0 sst 
 
@@ -16,8 +16,14 @@ start_server {tags {"ttl compact"}} {
 
         set sst_age_limit [get_info_property r Swap swap_ttl_compact sst_age_limit]
         assert_equal $sst_age_limit 0
-
     }
+}
+
+start_server {tags {"ttl compact 1"} 
+    overrides {swap-debug-evict-keys {0} 
+               swap-ttl-compact-period {1} 
+               swap-sst-age-limit-refresh-period {1} 
+               swap-swap-info-slave-period {1}}}  {
 
     test {ttl compact on keys without expire} {
         for {set j 0} { $j < 100} {incr j} {
@@ -44,13 +50,16 @@ start_server {tags {"ttl compact"}} {
 
         set sst_age_limit [get_info_property r Swap swap_ttl_compact sst_age_limit]
         assert_morethan $sst_age_limit 9000000000000000000
-
-        r flushdb
-
     }
+}
 
+start_server {tags {"ttl compact 2"} 
+    overrides {swap-debug-evict-keys {0} 
+               swap-ttl-compact-period {1} 
+               swap-sst-age-limit-refresh-period {1} 
+               swap-swap-info-slave-period {1}}}  {
     test {ttl compact on non-expired keys} {
-    
+
         for {set j 0} { $j < 100} {incr j} {
             set mybitmap "mybitmap-$j"
 
@@ -66,7 +75,7 @@ start_server {tags {"ttl compact"}} {
         r swap compact 
 
         # make sure info property updated
-        after 2500
+        after 1500
 
         set request_sst_count [get_info_property r Swap swap_ttl_compact request_sst_count]
         assert_equal $request_sst_count 0
@@ -76,9 +85,14 @@ start_server {tags {"ttl compact"}} {
 
         set sst_age_limit [get_info_property r Swap swap_ttl_compact sst_age_limit]
         assert_range $sst_age_limit 900000 1000000
-
-        r flushdb
     }
+}
+
+start_server {tags {"ttl compact 3"} 
+    overrides {swap-debug-evict-keys {0} 
+               swap-ttl-compact-period {1} 
+               swap-sst-age-limit-refresh-period {1} 
+               swap-swap-info-slave-period {1}}}  {
 
     test {ttl compact on expired keys} {
 
@@ -100,8 +114,6 @@ start_server {tags {"ttl compact"}} {
         after 1500
 
         set sst_age_limit [get_info_property r Swap swap_ttl_compact sst_age_limit]
-
-        # expire seconds -> milliseconds
         assert_lessthan $sst_age_limit 500
 
         set compact_times [get_info_property r Swap swap_ttl_compact times]
@@ -124,7 +136,7 @@ start_server {tags {"ttl compact"}} {
         # sst in L0 is forced to be compacted to L1
         r swap compact 
 
-        # 1.5s, bigger than default ttl compact period
+        # 1.5s, bigger than ttl compact period
         after 1500
 
         set sst_age_limit [get_info_property r Swap swap_ttl_compact sst_age_limit]
@@ -136,9 +148,7 @@ start_server {tags {"ttl compact"}} {
 
         set request_sst_count [get_info_property r Swap swap_ttl_compact request_sst_count]
         assert_range $request_sst_count 1 3
-        r flushdb
     }
-
 }
 
 start_server {tags {"master propagate expire test"} overrides {save ""}} {

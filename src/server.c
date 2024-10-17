@@ -2160,7 +2160,7 @@ void _rdbSaveBackground(client *c, swapCtx *ctx) {
 
 static void ttlCompactGetSstAgeLimit() {
     if (server.swap_ttl_compact_enabled) {
-        
+
             wtdigest *expire_wt = server.swap_ttl_compact_ctx->expire_stats->expire_wt;
             swapExpireStatus *expire_stats = server.swap_ttl_compact_ctx->expire_stats;
             unsigned long long keys_num = (unsigned long long)dbTotalServerKeyCount();
@@ -2169,7 +2169,7 @@ static void ttlCompactGetSstAgeLimit() {
             if (sampled_size == 0) {
                 expire_stats->sst_age_limit = 0;
             } else if (wtdigestGetRunnningTime(expire_wt) > wtdigestGetWindow(expire_wt) ||
-                       sampled_size > keys_num) {
+                       sampled_size >= keys_num) {
                 double percentile = (double)server.swap_ttl_compact_expire_percentile / 100;
                 double res = wtdigestQuantile(expire_wt, percentile);
                 serverAssert(!IS_INVALID_QUANTILE(res));
