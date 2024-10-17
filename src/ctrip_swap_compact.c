@@ -600,7 +600,12 @@ void swapTtlCompactCtxReset(swapTtlCompactCtx *ctx) {
 
 void rocksdbCompactRangeTaskDone(void *result, void *pd, int errcode) {
     UNUSED(result), UNUSED(errcode);
-    compactTaskFree(pd); /* compactTask */
+
+    compactTask *task = pd;
+    if (task->compact_type == TYPE_TTL_COMPACT) {
+        atomicIncr(server.swap_ttl_compact_ctx->stat_compact_times, 1);
+    }
+    compactTaskFree(task); /* compactTask */
 }
 
 cfMetas *cfMetasNew(uint cf_num) {

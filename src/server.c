@@ -2158,7 +2158,12 @@ void _rdbSaveBackground(client *c, swapCtx *ctx) {
     clientReleaseLocks(c,ctx);
 }
 
-static void ttlCompactGetSstAgeLimit() {
+static void ttlCompactRefreshSstAgeLimit() {
+    if (!iAmMaster()) {
+        /* slave get sst age limit in "swap.info" cmd propagated from master. */
+        return;
+    }
+
     if (server.swap_ttl_compact_enabled) {
 
             wtdigest *expire_wt = server.swap_ttl_compact_ctx->expire_stats->expire_wt;
@@ -2475,19 +2480,21 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     }
 
     run_with_period(1000*server.swap_sst_age_limit_refresh_period) {
-        if (iAmMaster()) {
-            ttlCompactGetSstAgeLimit();
-        }
-
-        ttlCompactProduceTask();
+        ttlCompactRefreshSstAgeLimit();
     }
 
     run_with_period(1000*server.swap_ttl_compact_period) {
+        /* producing and consuming task are both in swap util thread
+         * so producing should be slower than consuming, otherwise consuming
+         * will be starved to death. */
+        ttlCompactProduceTask();  
+    }
+
+    run_with_period(1000*server.swap_ttl_compact_period / 2) {
         ttlCompactConsumeTask();   
     }
 
     run_with_period(1000*server.swap_swap_info_slave_period) {
-        
         /* propagate sst age limit */
         int argc = 0;
         robj **argv = swapBuildSwapInfoSstAgeLimitCmd(&argc);
