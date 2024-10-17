@@ -493,7 +493,10 @@ long long emptyDb(int dbnum, int flags, void(callback)(void*)) {
 
     /* Empty redis database structure. */
     removed = emptyDbStructure(server.db, dbnum, async, callback);
-    swapTtlCompactCtxReset(server.swap_ttl_compact_ctx);
+
+    if (server.swap_ttl_compact_ctx) {
+        swapTtlCompactCtxReset(server.swap_ttl_compact_ctx);
+    }
 
     /* Flush slots to keys map if enable cluster, we can flush entire
      * slots to keys map whatever dbnum because only support one DB

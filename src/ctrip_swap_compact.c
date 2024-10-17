@@ -279,6 +279,7 @@ void cfIndexesFree(cfIndexes *idxes) {
 }
 
 compactKeyRange *compactKeyRangeNew(uint cf_index, char *start_key, char *end_key, size_t start_key_size, size_t end_key_size) {
+    serverAssert(cf_index < CF_COUNT);
     compactKeyRange *range = zcalloc(sizeof(compactKeyRange));
     range->cf_index = cf_index;
     range->start_key = start_key;
@@ -313,7 +314,6 @@ void compactTaskFree(compactTask *task) {
         if (task->key_range[i]) {
             compactKeyRangeFree(task->key_range[i]);
         }
-        
     }
     zfree(task->key_range);
     zfree(task);
@@ -617,7 +617,9 @@ cfMetas *cfMetasNew(uint cf_num) {
 
 void cfMetasFree(cfMetas *metas) {
     for (uint i = 0; i < metas->num; i++) {
-        rocksdb_column_family_metadata_destroy(metas->cf_meta[i]);
+        if (metas->cf_meta[i]) {
+            rocksdb_column_family_metadata_destroy(metas->cf_meta[i]);
+        }
     }
     zfree(metas->cf_meta);
     zfree(metas);
@@ -1066,6 +1068,19 @@ compactTask *mockTtlCompactTask() {
         test_assert(task2->count == 1);
         test_assert(task2->capacity == 1);
         compactTaskFree(task2);
+    }
+
+    TEST("swapTtlCompactCtxNew new reset free") {
+
+        swapTtlCompactCtx *ttl_compact_ctx = swapTtlCompactCtxNew();
+
+        wtdigestAdd(ttl_compact_ctx->expire_stats->expire_wt, 10, 1);
+        test_assert(wtdigestSize(ttl_compact_ctx->expire_stats->expire_wt) == 1);
+
+        swapTtlCompactCtxReset(ttl_compact_ctx);
+
+        test_assert(wtdigestSize(ttl_compact_ctx->expire_stats->expire_wt) == 0);
+        swapTtlCompactCtxFree(ttl_compact_ctx); 
     }
 
     TEST("generate server ttl compact task - no sst") {
