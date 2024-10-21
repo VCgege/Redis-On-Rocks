@@ -2177,7 +2177,7 @@ static void ttlCompactRefreshSstAgeLimit() {
                        sampled_size >= keys_num) {
                 double percentile = (double)server.swap_ttl_compact_expire_percentile / 100;
                 double res = wtdigestQuantile(expire_wt, percentile);
-                expire_stats->sst_age_limit = (long long)res;
+                expire_stats->sst_age_limit =  res >= SWAP_TTL_COMPACT_INVALID_EXPIRE? SWAP_TTL_COMPACT_INVALID_EXPIRE:(long long)res;
             } else {
                 expire_stats->sst_age_limit = SWAP_TTL_COMPACT_INVALID_EXPIRE;
             }
