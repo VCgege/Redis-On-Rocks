@@ -401,12 +401,6 @@ bool isSwapInfoSupported(void) {
 /* SWAP.INFO SST-AGE-LIMIT <quantile> <sst age limit> */
 robj **swapBuildSwapInfoSstAgeLimitCmd(int *argc) {
 
-    // if (iAmMaster()) {
-    //     serverLog(LL_NOTICE, "I am a master!!");
-    //     server.swap_ttl_compact_ctx->expire_stats->sst_age_limit = -server.swap_ttl_compact_ctx->expire_stats->sst_age_limit;
-    // }
-    // serverLog(LL_NOTICE, "I send sst_age_limit is %lld", server.swap_ttl_compact_ctx->expire_stats->sst_age_limit); // for debug, wait del
-
     *argc = 4;
 
     robj **argv = zmalloc(4 * sizeof(robj *));

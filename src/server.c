@@ -2168,7 +2168,7 @@ static void ttlCompactRefreshSstAgeLimit() {
 
             wtdigest *expire_wt = server.swap_ttl_compact_ctx->expire_stats->expire_wt;
             swapExpireStatus *expire_stats = server.swap_ttl_compact_ctx->expire_stats;
-            unsigned long long keys_num = (unsigned long long)dbTotalServerKeyCount();
+            long long keys_num = dbTotalServerKeyCount();
             long long sampled_size = wtdigestSize(expire_wt);
 
             if (sampled_size == 0) {
@@ -2479,22 +2479,22 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         }
     }
 
-    run_with_period(1000*server.swap_sst_age_limit_refresh_period) {
+    run_with_period(1000*(int)server.swap_sst_age_limit_refresh_period) {
         ttlCompactRefreshSstAgeLimit();
     }
 
-    run_with_period(1000*server.swap_ttl_compact_period) {
+    run_with_period(1000*(int)server.swap_ttl_compact_period) {
         /* producing and consuming task are both in swap util thread
          * so producing should be slower than consuming, otherwise consuming
          * will be starved to death. */
         ttlCompactProduceTask();  
     }
 
-    run_with_period(1000*server.swap_ttl_compact_period / 2) {
+    run_with_period(1000*(int)server.swap_ttl_compact_period / 2) {
         ttlCompactConsumeTask();   
     }
 
-    run_with_period(1000*server.swap_swap_info_slave_period) {
+    run_with_period(1000*(int)server.swap_swap_info_slave_period) {
         /* propagate sst age limit */
         int argc = 0;
         robj **argv = swapBuildSwapInfoSstAgeLimitCmd(&argc);

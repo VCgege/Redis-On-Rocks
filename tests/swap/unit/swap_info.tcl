@@ -13,4 +13,10 @@ start_server {tags {"swap.info"}} {
         assert_equal $sst_age_limit -2222
     }
 
+    test "illegal cmd" {
+        r swap.info illegal
+        r swap.info SST-AGE-LIMIT
+        r swap.info SST-AGE-LIMIT 50
+        r swap.info SST-AGE-LIMIT 50 50 50 err
+    }
 }

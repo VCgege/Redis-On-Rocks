@@ -341,7 +341,6 @@ void compactTaskAppend(compactTask *task, compactKeyRange *key_range) {
 static rocksdb_level_metadata_t* getHighestLevelMetaWithSST(rocksdb_column_family_metadata_t *default_meta) {
 
     size_t level_count = rocksdb_column_family_metadata_get_level_count(default_meta);
-    serverLog(LL_NOTICE, "[rocksdb initiative compact] level_count : %lu", level_count); // wait delete
 
     rocksdb_level_metadata_t* level_meta = NULL;
     size_t highest_level_sst_num = 0;
@@ -350,13 +349,11 @@ static rocksdb_level_metadata_t* getHighestLevelMetaWithSST(rocksdb_column_famil
         /* from bottom_most level */
         level_meta = rocksdb_column_family_metadata_get_level_metadata(default_meta, i);
         if (level_meta == NULL) {
-            serverLog(LL_NOTICE, "[rocksdb initiative compact] level_meta == NULL ");  // wait delete
             continue;
         }
 
         highest_level_sst_num = rocksdb_level_metadata_get_file_count(level_meta);
         if (highest_level_sst_num != 0) {
-            serverLog(LL_NOTICE, "[rocksdb initiative compact] level: %d , here is sst!!!", i);  // wait delete
             break;
         }
 
@@ -463,13 +460,9 @@ static compactTask *getTtlCompactTask(rocksdb_level_metadata_t *level_meta, uint
     if (is_ascending_order) {
         smallest_sst_meta = rocksdb_level_metadata_get_sst_file_metadata(level_meta, sst_index_arr[0]);
         largest_sst_meta = rocksdb_level_metadata_get_sst_file_metadata(level_meta, sst_index_arr[arranged_cursor]);
-        serverLog(LL_NOTICE, "[rocksdb initiative compact range task] small file:%d, large file:%d, increase, constitute_index_cursor: %d",
-            sst_index_arr[0], sst_index_arr[arranged_cursor], arranged_cursor); // wait del
     } else {
         smallest_sst_meta = rocksdb_level_metadata_get_sst_file_metadata(level_meta, sst_index_arr[arranged_cursor]);
         largest_sst_meta = rocksdb_level_metadata_get_sst_file_metadata(level_meta, sst_index_arr[0]);
-        serverLog(LL_NOTICE, "[rocksdb initiative compact range task] small file:%d, large file:%d, no increase, constitute_index_cursor: %d",
-            sst_index_arr[arranged_cursor],sst_index_arr[0], arranged_cursor); // wait del
     }
 
     serverAssert(smallest_sst_meta != NULL);
@@ -498,8 +491,8 @@ void genServerTtlCompactTask(void *result, void *pd, int errcode) {
     serverAssert(metas->num == 1);
 
     long long sst_age_limit = server.swap_ttl_compact_ctx->expire_stats->sst_age_limit;
-    if (sst_age_limit == SWAP_TTL_COMPACT_INVALID_EXPIRE) {
-        /* no need to generate task. */
+    if (!(sst_age_limit > LONG_LONG_MIN && sst_age_limit < LONG_LONG_MAX)) {
+        /* illegal age limit for sst. */
         cfMetasFree(metas);
         return;
     }
@@ -510,7 +503,6 @@ void genServerTtlCompactTask(void *result, void *pd, int errcode) {
     rocksdb_column_family_metadata_t *default_meta = metas->cf_meta[0];
     rocksdb_level_metadata_t *level_meta = getHighestLevelMetaWithSST(default_meta);
     if (level_meta == NULL) {
-        serverLog(LL_NOTICE, "[rocksdb initiative compact] L1 ~ L6 no sst"); // wait del
         cfMetasFree(metas);
         return;
     }
@@ -602,7 +594,7 @@ void rocksdbCompactRangeTaskDone(void *result, void *pd, int errcode) {
     UNUSED(result), UNUSED(errcode);
 
     compactTask *task = pd;
-    compactTaskFree(task); /* compactTask */
+    compactTaskFree(task);
 }
 
 cfMetas *cfMetasNew(uint cf_num) {
@@ -653,6 +645,29 @@ static void rocksdbDelete(int cf, sds rawkey, char** err) {
 void initServer(void);
 void initServerConfig(void);
 void InitServerLast();
+
+compactTask *mockFullCompactTask() {
+
+    compactTask *task = compactTaskNew(TYPE_FULL_COMPACT);
+
+    compactKeyRange *meta_key_range = compactKeyRangeNew(META_CF, NULL, NULL, 0, 0);
+    compactKeyRange *data_key_range = compactKeyRangeNew(DATA_CF, NULL, NULL, 0, 0);
+    compactKeyRange *score_key_range = compactKeyRangeNew(SCORE_CF, NULL, NULL, 0, 0);
+    
+    compactTaskAppend(task,meta_key_range);
+    compactTaskAppend(task,data_key_range);
+    compactTaskAppend(task,score_key_range);
+    return task;
+}
+
+compactTask *mockTtlCompactTask() {
+
+    compactTask *task = compactTaskNew(TYPE_TTL_COMPACT);
+    compactKeyRange *data_key_range = compactKeyRangeNew(DATA_CF, NULL, NULL, 0, 0);    
+    compactTaskAppend(task,data_key_range);
+    return task;
+}
+
 int swapFilterTest(int argc, char **argv, int accurate) {
     UNUSED(argc);
     UNUSED(argv);
@@ -1030,30 +1045,6 @@ int swapFilterTest(int argc, char **argv, int accurate) {
             test_assert(scan_count == 1);
         }
     }
-
-compactTask *mockFullCompactTask() {
-
-    compactTask *task = compactTaskNew(TYPE_FULL_COMPACT);
-
-    compactKeyRange *meta_key_range = compactKeyRangeNew(META_CF, NULL, NULL, 0, 0);
-    compactKeyRange *data_key_range = compactKeyRangeNew(DATA_CF, NULL, NULL, 0, 0);
-    compactKeyRange *score_key_range = compactKeyRangeNew(SCORE_CF, NULL, NULL, 0, 0);
-    
-    compactTaskAppend(task,meta_key_range);
-    compactTaskAppend(task,data_key_range);
-    compactTaskAppend(task,score_key_range);
-
-    return task;
-}
-
-compactTask *mockTtlCompactTask() {
-
-    compactTask *task = compactTaskNew(TYPE_TTL_COMPACT);
-
-    compactKeyRange *data_key_range = compactKeyRangeNew(DATA_CF, NULL, NULL, 0, 0);    
-    compactTaskAppend(task,data_key_range);
-    return task;
-}
 
     TEST("compact task new free") {
         compactTask *task1 = mockFullCompactTask();

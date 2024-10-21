@@ -1337,7 +1337,6 @@ void swapInfoCommand(client *c) {
         res = isObjectRepresentableAsLongLong(c->argv[3], &sst_age_limit);
         if (res == C_OK) {
             server.swap_ttl_compact_ctx->expire_stats->sst_age_limit = sst_age_limit;
-            // serverLog(LL_NOTICE, "I get it !!!  %lld", server.swap_ttl_compact_ctx->expire_stats->sst_age_limit); // wait del
         }
         addReply(c,shared.ok);
         return;
