@@ -1929,7 +1929,7 @@ typedef struct cfIndexes {
   int *index;
 } cfIndexes;
 
-cfIndexes *cfIndexesNew();
+cfIndexes *cfIndexesNew(uint num);
 void cfIndexesFree(cfIndexes *indexes);
 
 /* rocksdb util task: compact */
@@ -1960,11 +1960,11 @@ void compactTaskAppend(compactTask *task, compactKeyRange *key_range);
 void rocksdbCompactRangeTaskDone(void *result, void *pd, int errcode);
 void genServerTtlCompactTask(void *result, void *pd, int errcode);
 
-#define SWAP_TTL_COMPACT_INVALID_EXPIRE LONG_LONG_MAX /* expire or pexpire is long long int. */
+#define SWAP_TTL_COMPACT_INVALID_EXPIRE LLONG_MAX /* expire or pexpire is long long int. */
 #define SWAP_TTL_COMPACT_DEFAULT_EXPIRE_WT_WINDOW 86400000 /* ms, 24h */
 
 typedef struct swapExpireStatus {
-    long long sst_age_limit; /* milliseconds, master will pass it to slave, both in master and slave, sub-slave */
+    long long sst_age_limit; /* milliseconds, both in master and slave, sub-slave, master will propagate it to slave */
     wtdigest *expire_wt; /* only in master, save in milliseconds */
 } swapExpireStatus;
 

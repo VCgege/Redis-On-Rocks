@@ -283,13 +283,10 @@ NULL
         /* no specified compact range, to launch a full compact. */
         compactTask *task = compactTaskNew(TYPE_FULL_COMPACT);
 
-        compactKeyRange *meta_key_range = compactKeyRangeNew(META_CF, NULL, NULL, 0, 0);
-        compactKeyRange *data_key_range = compactKeyRangeNew(DATA_CF, NULL, NULL, 0, 0);
-        compactKeyRange *score_key_range = compactKeyRangeNew(SCORE_CF, NULL, NULL, 0, 0);
-        
-        compactTaskAppend(task,meta_key_range);
-        compactTaskAppend(task,data_key_range);
-        compactTaskAppend(task,score_key_range);
+        for (int i = 0; i < CF_COUNT; i++) {
+            compactKeyRange *key_range = compactKeyRangeNew(i, NULL, NULL, 0, 0);
+            compactTaskAppend(task, key_range);
+        }
 
         if (submitUtilTask(ROCKSDB_COMPACT_RANGE_TASK, task, rocksdbCompactRangeTaskDone, task, &error)) {
             addReply(c,shared.ok);

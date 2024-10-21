@@ -274,7 +274,6 @@ int scanExpireDbCycle(redisDb *db, int type, long long timelimit) {
             scanMeta *meta = metas->metas + i;
 
             long long nowtime = mstime();
-
             long long expire_add;
             if (meta->expire != -1) {
                 expireCandidatesAdd(scan_expire->candidates,

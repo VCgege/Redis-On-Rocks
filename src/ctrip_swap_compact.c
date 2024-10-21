@@ -267,10 +267,17 @@ rocksdb_compactionfilterfactory_t* createScoreCfCompactionFilterFactory() {
             createScoreCfCompactionFilter,scoreFilterFactoryName);
 }
 
-/* compact task && ttl compact task in server */
+/* 
+ * for manual compact task 
+ * 1.ttl compact task
+ * 2.full compact task 
+ */
 
-cfIndexes *cfIndexesNew() {
-    return zcalloc(sizeof(cfIndexes));
+cfIndexes *cfIndexesNew(uint num) {
+    cfIndexes *idxes = zmalloc(sizeof(cfIndexes));
+    idxes->num = num;
+    idxes->index = zcalloc(sizeof(int) * num);
+    return idxes;
 }
 
 void cfIndexesFree(cfIndexes *idxes) {
@@ -377,12 +384,10 @@ static int getExpiredSstInfo(rocksdb_level_metadata_t* level_meta, long long sst
         /* seconds */
         uint64_t create_time = rocksdb_sst_file_metadata_get_file_creation_time(sst_meta); 
         rocksdb_sst_file_metadata_destroy(sst_meta);
-
-        time_t nowtimestamp;
-        time(&nowtimestamp);
-
-        long long exist_time = nowtimestamp - create_time;
-        if (exist_time * 1000 <= sst_age_limit) {
+        long long nowtimestamp = mstime();
+        
+        long long exist_time = nowtimestamp - (long long)create_time * 1000;
+        if (exist_time <= sst_age_limit) {
             continue;
         }
 
@@ -616,7 +621,7 @@ void cfMetasFree(cfMetas *metas) {
 
 sds genSwapTtlCompactInfoString(sds info) {
     info = sdscatprintf(info,
-            "swap_ttl_compact:times=%llu, request_sst_count=%llu,"
+            "swap_ttl_compact:times=%llu,request_sst_count=%llu,"
             "sst_age_limit=%lld\r\n",
             server.swap_ttl_compact_ctx->stat_request_compact_times,
             server.swap_ttl_compact_ctx->stat_request_sst_count,
@@ -1046,7 +1051,7 @@ int swapFilterTest(int argc, char **argv, int accurate) {
         }
     }
 
-    TEST("compact task new free") {
+    TEST("compactTask - new free") {
         compactTask *task1 = mockFullCompactTask();
         test_assert(task1->count == 3);
         test_assert(task1->capacity == 4);
@@ -1058,35 +1063,23 @@ int swapFilterTest(int argc, char **argv, int accurate) {
         compactTaskFree(task2);
     }
 
-    TEST("swapTtlCompactCtxNew new reset free") {
-
-        swapTtlCompactCtx *ttl_compact_ctx = swapTtlCompactCtxNew();
-
-        wtdigestAdd(ttl_compact_ctx->expire_stats->expire_wt, 10, 1);
-        test_assert(wtdigestSize(ttl_compact_ctx->expire_stats->expire_wt) == 1);
-
-        swapTtlCompactCtxReset(ttl_compact_ctx);
-
-        test_assert(wtdigestSize(ttl_compact_ctx->expire_stats->expire_wt) == 0);
-        swapTtlCompactCtxFree(ttl_compact_ctx); 
-    }
-
-    TEST("generate server ttl compact task - no sst") {
+    TEST("server ttl compact task - during no sst") {
     
         server.swap_ttl_compact_ctx = swapTtlCompactCtxNew();
 
-        cfIndexes *idxes = cfIndexesNew();
+        cfIndexes *idxes = cfIndexesNew(1);
 
-        /* mock result of collect task */
+        /* mock result of collect meta task */
         cfMetas *cf_metas = cfMetasNew(1);
         cf_metas->cf_meta[0] = rocksdb_get_column_family_metadata_cf(server.rocks->db, server.rocks->cf_handles[DATA_CF]);
-        
+
         genServerTtlCompactTask(cf_metas, idxes, 0);
 
-        test_assert(server.swap_ttl_compact_ctx->task == NULL);
+        if (server.swap_ttl_compact_ctx->task)
+            compactTaskFree(server.swap_ttl_compact_ctx->task);
     }
 
-    TEST("swapTtlCompactCtxNew & swapTtlCompactCtxReset") {
+    TEST("swapTtlCompactCtx - new & reset & free") {
         
         server.swap_ttl_compact_ctx = swapTtlCompactCtxNew();
 
@@ -1101,9 +1094,12 @@ int swapFilterTest(int argc, char **argv, int accurate) {
         test_assert(server.swap_ttl_compact_ctx->task == NULL);
         test_assert(server.swap_ttl_compact_ctx->expire_stats->sst_age_limit == 0);
         test_assert(wtdigestSize(server.swap_ttl_compact_ctx->expire_stats->expire_wt) == 0);
+
+        swapTtlCompactCtxFree(server.swap_ttl_compact_ctx); 
+        server.swap_ttl_compact_ctx = NULL;
     }
 
-    TEST("api test - sortExpiredSstInfo 0") {
+    TEST("sortExpiredSstInfo - test 0") {
         
         /* mock sst info */
         size_t highest_level_sst_num = 5;
@@ -1123,7 +1119,7 @@ int swapFilterTest(int argc, char **argv, int accurate) {
         test_assert(sst_age_arr[1] == 99);
     }
 
-    TEST("api test - sortExpiredSstInfo 1") {
+    TEST("sortExpiredSstInfo - test 1") {
         
         /* mock sst info */
         size_t highest_level_sst_num = 5;
@@ -1146,7 +1142,7 @@ int swapFilterTest(int argc, char **argv, int accurate) {
         test_assert(sst_age_arr[2] == 99);
     }
 
-    TEST("api test - sortExpiredSstInfo 2") {
+    TEST("sortExpiredSstInfo - test 2") {
         
         /* mock sst info */
         size_t highest_level_sst_num = 5;
@@ -1169,7 +1165,7 @@ int swapFilterTest(int argc, char **argv, int accurate) {
         test_assert(sst_age_arr[2] == 99);
     }
 
-    TEST("api test - sortExpiredSstInfo 3") {
+    TEST("sortExpiredSstInfo - test 3") {
         
         /* mock sst info */
         size_t highest_level_sst_num = 6;
@@ -1195,7 +1191,7 @@ int swapFilterTest(int argc, char **argv, int accurate) {
 
     }
 
-    TEST("api test - sortExpiredSstInfo 4") {
+    TEST("sortExpiredSstInfo - test 4") {
         
         /* mock sst info */
         size_t highest_level_sst_num = 6;

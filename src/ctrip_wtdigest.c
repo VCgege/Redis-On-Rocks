@@ -1,4 +1,4 @@
-/* Copyright (c) 2023, ctrip.com * All rights reserved.
+/* Copyright (c) 2024, ctrip.com * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -64,9 +64,6 @@ wtdigest* wtdigestCreate(uint8_t num_buckets)
 
 void wtdigestDestroy(wtdigest* wt)
 {
-    if (wt == NULL) {
-        return;
-    }
     for (uint8_t i = 0; i < wt->num_buckets; i++) {
         serverAssert(wt->buckets[i] != NULL);
         td_free(wt->buckets[i]);
@@ -221,6 +218,62 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
 
             q = (int)wtdigestQuantile(wt, 0.999);
             test_assert(400 == q);
+
+            wtdigestDestroy(wt);
+        }
+
+        TEST("wtdigest: boundary value test") {
+
+            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
+            double q;
+
+            for (int i = 0; i < 300; i++) {
+                wtdigestAdd(wt, __DBL_MAX__, 1);
+            }
+
+            q = wtdigestQuantile(wt, 0.99);
+            test_assert(__DBL_MAX__ == q);
+
+            wtdigestReset(wt);
+            for (int i = 0; i < 300; i++) {
+                wtdigestAdd(wt, __DBL_MIN__, 1);
+            }
+            q = wtdigestQuantile(wt, 0.99);
+            test_assert(__DBL_MIN__ == q);
+
+            wtdigestReset(wt);
+            for (int i = 0; i < 300; i++) {
+                wtdigestAdd(wt, (double)LLONG_MAX, 1);
+            }
+            q = wtdigestQuantile(wt, 0.99);
+            test_assert(LLONG_MAX == q);
+
+            wtdigestReset(wt);
+            for (int i = 0; i < 300; i++) {
+                wtdigestAdd(wt, (double)LLONG_MIN, 1);
+            }
+            q = wtdigestQuantile(wt, 0.99);
+            test_assert(LLONG_MIN == q);
+
+            wtdigestReset(wt);
+            for (int i = 0; i < 100; i++) {
+                wtdigestAdd(wt, (double)LLONG_MIN, 1);
+            }
+            for (int i = 0; i < 100; i++) {
+                wtdigestAdd(wt, (double)LLONG_MAX, 1);
+            }
+            q = wtdigestQuantile(wt, 0.99);
+            test_assert(LLONG_MAX == q);
+
+            wtdigestReset(wt);
+            for (int i = 0; i < 100; i++) {
+                wtdigestAdd(wt, __DBL_MAX__, 1);
+            }
+            for (int i = 0; i < 100; i++) {
+                wtdigestAdd(wt, __DBL_MIN__, 1);
+            }
+            q = wtdigestQuantile(wt, 0.99);
+            test_assert(__DBL_MAX__ == q);
 
             wtdigestDestroy(wt);
         }
