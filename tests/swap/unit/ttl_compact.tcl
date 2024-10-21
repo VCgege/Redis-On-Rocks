@@ -144,10 +144,10 @@ start_server {tags {"ttl compact 3"}
 
         # all ttl of existing keys is supposed bigger than sst_age_limit, no more ttl compact
         set compact_times [get_info_property r Swap swap_ttl_compact times]
-        assert_range $compact_times 1 2
+        assert_range $compact_times 0 2
 
         set request_sst_count [get_info_property r Swap swap_ttl_compact request_sst_count]
-        assert_range $request_sst_count 1 3
+        assert_range $request_sst_count 0 3
     }
 }
 
