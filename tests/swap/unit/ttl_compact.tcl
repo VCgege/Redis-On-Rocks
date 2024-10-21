@@ -207,7 +207,7 @@ start_server {tags {"master propagate expire test"} overrides {save ""}} {
     start_server {overrides {swap-repl-rordb-sync {no} 
                              swap-debug-evict-keys {0}
                              swap-swap-info-slave-period {1} 
-                             swap-sst-age-limit-refresh-period {1}}} {
+                             swap-sst-age-limit-refresh-period {1000}}} {
 
         set master_host [srv 0 host]
         set master_port [srv 0 port]
@@ -219,16 +219,7 @@ start_server {tags {"master propagate expire test"} overrides {save ""}} {
         wait_for_sync $slave
         test {ttl compact master slave propagate check} {
 
-            for {set j 0} { $j < 100} {incr j} {
-                set mybitmap "mybitmap-$j"
-
-                # bitmap is spilt as subkey of 4KB by default
-                $master setbit $mybitmap 32768 1
-                $master pexpire $mybitmap 500
-
-                $master swap.evict $mybitmap
-                wait_key_cold $master $mybitmap
-            } 
+            $master swap.info SST-AGE-LIMIT 99 1111
 
             # more than swap-swap-info-slave-period
             after 1000
@@ -237,7 +228,7 @@ start_server {tags {"master propagate expire test"} overrides {save ""}} {
             set sst_age_limit1 [get_info_property $master Swap swap_ttl_compact sst_age_limit]
             set sst_age_limit2 [get_info_property $slave Swap swap_ttl_compact sst_age_limit]
 
-            assert_lessthan $sst_age_limit1 500
+            assert_equal $sst_age_limit1 1111
             assert_equal $sst_age_limit1 $sst_age_limit2
         }
     }
