@@ -2204,6 +2204,7 @@ static void ttlCompactConsumeTask() {
         compactTask *task = server.swap_ttl_compact_ctx->task;
         if (submitUtilTask(ROCKSDB_COMPACT_RANGE_TASK, task, rocksdbCompactRangeTaskDone, task, NULL)) {
             server.swap_ttl_compact_ctx->task = NULL; /* task move to utilctx */
+            atomicIncr(server.swap_ttl_compact_ctx->stat_request_compact_times, 1);
         } else {
             serverLog(LL_NOTICE, "[rocksdb] ttl compact task set failed. ");
         }

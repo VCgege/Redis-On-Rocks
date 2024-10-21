@@ -551,7 +551,7 @@ swapExpireStatus *swapExpireStatusNew() {
     stats->expire_wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
     wtdigestSetWindow(stats->expire_wt, SWAP_TTL_COMPACT_DEFAULT_EXPIRE_WT_WINDOW);
 
-    stats->sst_age_limit = SWAP_TTL_COMPACT_INVALID_EXPIRE;
+    stats->sst_age_limit = 0;
     return stats;
 }
 
@@ -564,7 +564,7 @@ void swapExpireStatusFree(swapExpireStatus *stats) {
 
 void swapExpireStatusReset(swapExpireStatus *stats) {
     wtdigestReset(stats->expire_wt);
-    stats->sst_age_limit = SWAP_TTL_COMPACT_INVALID_EXPIRE; 
+    stats->sst_age_limit = 0; 
 }
 
 swapTtlCompactCtx *swapTtlCompactCtxNew() {
@@ -572,7 +572,7 @@ swapTtlCompactCtx *swapTtlCompactCtxNew() {
 
     ctx->task = NULL;
     ctx->expire_stats = swapExpireStatusNew();
-    ctx->stat_compact_times = 0;
+    ctx->stat_request_compact_times = 0;
     ctx->stat_request_sst_count = 0;
     return ctx;
 }
@@ -602,9 +602,6 @@ void rocksdbCompactRangeTaskDone(void *result, void *pd, int errcode) {
     UNUSED(result), UNUSED(errcode);
 
     compactTask *task = pd;
-    if (task->compact_type == TYPE_TTL_COMPACT) {
-        atomicIncr(server.swap_ttl_compact_ctx->stat_compact_times, 1);
-    }
     compactTaskFree(task); /* compactTask */
 }
 
@@ -629,7 +626,7 @@ sds genSwapTtlCompactInfoString(sds info) {
     info = sdscatprintf(info,
             "swap_ttl_compact:times=%llu, request_sst_count=%llu,"
             "sst_age_limit=%lld\r\n",
-            server.swap_ttl_compact_ctx->stat_compact_times,
+            server.swap_ttl_compact_ctx->stat_request_compact_times,
             server.swap_ttl_compact_ctx->stat_request_sst_count,
             server.swap_ttl_compact_ctx->expire_stats->sst_age_limit);
     return info;
@@ -1096,6 +1093,23 @@ compactTask *mockTtlCompactTask() {
         genServerTtlCompactTask(cf_metas, idxes, 0);
 
         test_assert(server.swap_ttl_compact_ctx->task == NULL);
+    }
+
+    TEST("swapTtlCompactCtxNew & swapTtlCompactCtxReset") {
+        
+        server.swap_ttl_compact_ctx = swapTtlCompactCtxNew();
+
+        /* mock server operation 
+         * add expire, get sst_age_limit and task */
+        wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, 10, 1);
+        server.swap_ttl_compact_ctx->expire_stats->sst_age_limit = 10;
+        server.swap_ttl_compact_ctx->task = compactTaskNew(TYPE_TTL_COMPACT);
+
+        swapTtlCompactCtxReset(server.swap_ttl_compact_ctx);
+
+        test_assert(server.swap_ttl_compact_ctx->task == NULL);
+        test_assert(server.swap_ttl_compact_ctx->expire_stats->sst_age_limit == 0);
+        test_assert(wtdigestSize(server.swap_ttl_compact_ctx->expire_stats->expire_wt) == 0);
     }
 
     TEST("api test - sortExpiredSstInfo 0") {

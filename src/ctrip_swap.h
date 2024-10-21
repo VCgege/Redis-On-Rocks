@@ -1971,7 +1971,7 @@ typedef struct swapExpireStatus {
 typedef struct swapTtlCompactCtx {
     compactTask *task; /* move to utilctx during serverCron. */
     swapExpireStatus *expire_stats;
-    redisAtomic unsigned long long stat_compact_times;
+    redisAtomic unsigned long long stat_request_compact_times;
     redisAtomic unsigned long long stat_request_sst_count;
 } swapTtlCompactCtx;
 
