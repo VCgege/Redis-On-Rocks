@@ -384,7 +384,7 @@ static int getExpiredSstInfo(rocksdb_level_metadata_t* level_meta, long long sst
         /* seconds */
         uint64_t create_time = rocksdb_sst_file_metadata_get_file_creation_time(sst_meta); 
         rocksdb_sst_file_metadata_destroy(sst_meta);
-        long long nowtimestamp = mstime();
+        long long nowtimestamp = server.mstime;
         
         long long exist_time = nowtimestamp - (long long)create_time * 1000;
         if (exist_time <= sst_age_limit) {
@@ -1085,7 +1085,7 @@ int swapFilterTest(int argc, char **argv, int accurate) {
 
         /* mock server operation 
          * add expire, get sst_age_limit and task */
-        wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, 10, 1);
+        wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, mstime(), 10, 1);
         server.swap_ttl_compact_ctx->expire_stats->sst_age_limit = 10;
         server.swap_ttl_compact_ctx->task = compactTaskNew(TYPE_TTL_COMPACT);
 
@@ -1093,7 +1093,7 @@ int swapFilterTest(int argc, char **argv, int accurate) {
 
         test_assert(server.swap_ttl_compact_ctx->task == NULL);
         test_assert(server.swap_ttl_compact_ctx->expire_stats->sst_age_limit == 0);
-        test_assert(wtdigestSize(server.swap_ttl_compact_ctx->expire_stats->expire_wt) == 0);
+        test_assert(wtdigestSize(server.swap_ttl_compact_ctx->expire_stats->expire_wt, mstime()) == 0);
 
         swapTtlCompactCtxFree(server.swap_ttl_compact_ctx); 
         server.swap_ttl_compact_ctx = NULL;

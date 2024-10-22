@@ -1992,8 +1992,8 @@ sds genSwapTtlCompactInfoString(sds info);
 
 void swapInfoCommand(client *c);
 
-robj **swapBuildSwapInfoSstAgeLimitCmd(int *argc);
-void swapDestorySwapInfoSstAgeLimitCmd(int argc, robj **argv);
+void swapBuildSwapInfoSstAgeLimitCmd(robj **argv, long long sst_age_limit);
+void swapDestorySwapInfoSstAgeLimitCmd(robj **argv);
 
 void swapPropagateSwapInfo(int argc, robj **argv);
 

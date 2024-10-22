@@ -37,7 +37,7 @@
 /*
   Window Tdigest algorithm is based on tdigest(MergingDigest). There are td_num buckets 
   (tdigest structs) in one window tdigest. And, caller need to specify the time of window(window_ms).
-  Window tdigest will save values in each bucket inside, and reset the oldest bucket 
+  Window tdigest will save values in each bucket inside, and reset the old bucket 
   when it exists longer than window_ms. So the returned value of wtdigestQuantile 
   is guaranteed to be within the window_ms.
  */
@@ -61,28 +61,31 @@ void wtdigestSetWindow(wtdigest* wt, unsigned long long window_ms);
 
 unsigned long long wtdigestGetWindow(wtdigest* wt);
 
-unsigned long long wtdigestGetRunnningTime(wtdigest* wt);
-
 void wtdigestReset(wtdigest* wt);
+
+unsigned long long wtdigestGetRunnningTime(wtdigest* wt, long long nowtime_ms);
+
+long long wtdigestSize(wtdigest* wt, long long nowtime_ms);
 
 /**
  * Adds a value to a wtdigest.
+ * @param nowtime_ms
  * @param val The value to add.
  * @param weight The weight of this value, sugggested to set to 1 normally.
+ * @return return 0 if success.
  * time complexity : nlog(n)
  */
-int wtdigestAdd(wtdigest* wt, double val, unsigned long long weight);
+int wtdigestAdd(wtdigest* wt, long long nowtime_ms, double val, unsigned long long weight);
 
 /**
  * Returns an estimate of the cutoff such that a specified fraction of the value
  * added to this wtdigest would be less than or equal to the cutoff.
  *
+ * @param nowtime_ms
  * @param q The desired fraction.
  * @return The value x such that cdf(x) == q,（cumulative distribution function，CDF).
  * time complexity : nlog(n)
  */
-double wtdigestQuantile(wtdigest* wt, double q);
-
-long long wtdigestSize(wtdigest* wt);
+double wtdigestQuantile(wtdigest* wt, long long nowtime_ms, double q);
 
 #endif

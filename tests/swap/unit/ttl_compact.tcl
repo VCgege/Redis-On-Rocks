@@ -243,7 +243,7 @@ start_server {tags {"master propagate expire test"} overrides {save ""}} {
         wait_for_sync $slave
         test {ttl compact master slave propagate check} {
 
-            $master swap.info SST-AGE-LIMIT 99 1111
+            $master swap.info SST-AGE-LIMIT 1111
 
             # more than swap-swap-info-slave-period
             after 1100

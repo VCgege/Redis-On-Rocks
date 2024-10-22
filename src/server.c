@@ -2168,14 +2168,14 @@ static void ttlCompactRefreshSstAgeLimit() {
             wtdigest *expire_wt = server.swap_ttl_compact_ctx->expire_stats->expire_wt;
             swapExpireStatus *expire_stats = server.swap_ttl_compact_ctx->expire_stats;
             long long keys_num = dbTotalServerKeyCount();
-            long long sampled_size = wtdigestSize(expire_wt);
+            long long sampled_size = wtdigestSize(expire_wt, server.mstime);
 
             if (sampled_size == 0) {
                 expire_stats->sst_age_limit = 0;
-            } else if (wtdigestGetRunnningTime(expire_wt) > wtdigestGetWindow(expire_wt) ||
+            } else if (wtdigestGetRunnningTime(expire_wt, server.mstime) > wtdigestGetWindow(expire_wt) ||
                        sampled_size >= keys_num) {
                 double percentile = (double)server.swap_ttl_compact_expire_percentile / 100;
-                double res = wtdigestQuantile(expire_wt, percentile);
+                double res = wtdigestQuantile(expire_wt, server.mstime, percentile);
                 if (res >= LLONG_MAX || res <= LLONG_MIN) {
                     /* maybe overflow happened, which is unexpected. */
                     expire_stats->sst_age_limit = SWAP_TTL_COMPACT_INVALID_EXPIRE;
@@ -2499,10 +2499,10 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     run_with_period(1000*(int)server.swap_swap_info_slave_period) {
         /* propagate sst age limit */
-        int argc = 0;
-        robj **argv = swapBuildSwapInfoSstAgeLimitCmd(&argc);
-        swapPropagateSwapInfo(argc, argv);
-        swapDestorySwapInfoSstAgeLimitCmd(argc, argv);
+        robj *argv[3];
+        swapBuildSwapInfoSstAgeLimitCmd(argv, server.swap_ttl_compact_ctx->expire_stats->sst_age_limit);
+        swapPropagateSwapInfo(3, argv);
+        // swapDestorySwapInfoSstAgeLimitCmd(argv);
     }
 
     /* Fire the cron loop modules event. */

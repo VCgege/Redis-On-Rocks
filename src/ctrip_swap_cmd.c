@@ -1312,7 +1312,7 @@ int getKeyRequestsMemory(int dbid, struct redisCommand *cmd, robj **argv,
  * SWAP.INFO <subcommand> [<arg> [value] [opt] ...]
  *
  * subcommand supported:
- * SWAP.INFO SST-AGE-LIMIT <quantile> <sst age limit> */
+ * SWAP.INFO SST-AGE-LIMIT <sst age limit> */
 void swapInfoCommand(client *c) {
     if (c->argc < 2) {
         addReply(c,shared.ok);
@@ -1324,17 +1324,10 @@ void swapInfoCommand(client *c) {
             NULL};
         addReplyHelp(c, help);
         return;
-    } else if (c->argc == 4 && !strcasecmp(c->argv[1]->ptr,"SST-AGE-LIMIT")) {
-        /* SWAP.INFO SST-AGE-LIMIT <quantile> <sst age limit> */
-        long long quantile = 0;
-        int res = isObjectRepresentableAsLongLong(c->argv[2], &quantile);
-        if (res != C_OK) {
-            addReply(c,shared.ok);
-            return;
-        }
-
+    } else if (c->argc == 3 && !strcasecmp(c->argv[1]->ptr,"SST-AGE-LIMIT")) {
+        /* SWAP.INFO SST-AGE-LIMIT <sst age limit> */
         long long sst_age_limit = 0;
-        res = isObjectRepresentableAsLongLong(c->argv[3], &sst_age_limit);
+        int res = isObjectRepresentableAsLongLong(c->argv[2], &sst_age_limit);
         if (res == C_OK) {
             server.swap_ttl_compact_ctx->expire_stats->sst_age_limit = sst_age_limit;
         }

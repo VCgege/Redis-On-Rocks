@@ -398,46 +398,31 @@ bool isSwapInfoSupported(void) {
     return true;
 }
 
-/* SWAP.INFO SST-AGE-LIMIT <quantile> <sst age limit> */
-robj **swapBuildSwapInfoSstAgeLimitCmd(int *argc) {
-
-    *argc = 4;
-
-    robj **argv = zmalloc(4 * sizeof(robj *));
-
-    robj *quantile = createStringObjectFromLongLong((long long)server.swap_ttl_compact_expire_percentile);
-    robj *sst_age_limit = createStringObjectFromLongLong(server.swap_ttl_compact_ctx->expire_stats->sst_age_limit);
+/* SWAP.INFO SST-AGE-LIMIT <sst age limit> */
+void swapBuildSwapInfoSstAgeLimitCmd(robj **argv, long long sst_age_limit) {
 
     argv[0] = shared.swap_info;
     argv[1] = shared.sst_age_limit;
-    argv[2] = quantile;
-    argv[3] = sst_age_limit;
-
-    return argv;
+    argv[2] = createStringObjectFromLongLong(sst_age_limit);
 }
 
-void swapDestorySwapInfoSstAgeLimitCmd(int argc, robj **argv) {
-
-    serverAssert(argc == 4);
-
+void swapDestorySwapInfoSstAgeLimitCmd(robj **argv) {
     decrRefCount(argv[2]);
-    decrRefCount(argv[3]);
-    zfree(argv);
 }
 
 /* The swap.info command, propagate system info to slave.
  * SWAP.INFO <subcommand> [<arg> [value] [opt] ...]
  *
  * subcommand supported:
- * SWAP.INFO SST-AGE-LIMIT <quantile> <sst age limit> */
+ * SWAP.INFO SST-AGE-LIMIT <sst age limit> */
 void swapPropagateSwapInfo(int argc, robj **argv) {
 
     if (!isSwapInfoSupported()) return; 
 
     if (argc < 2) {
         return;
-    } else if (argc == 4 && !strcasecmp(argv[1]->ptr,"SST-AGE-LIMIT")) {
-        /* SWAP.INFO SST-AGE-LIMIT <quantile> <sst age limit> */
+    } else if (argc == 3 && !strcasecmp(argv[1]->ptr,"SST-AGE-LIMIT")) {
+        /* SWAP.INFO SST-AGE-LIMIT <sst age limit> */
         goto propagate;
     }
     return;
