@@ -2502,7 +2502,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         robj *argv[3];
         swapBuildSwapInfoSstAgeLimitCmd(argv, server.swap_ttl_compact_ctx->expire_stats->sst_age_limit);
         swapPropagateSwapInfo(3, argv);
-        // swapDestorySwapInfoSstAgeLimitCmd(argv);
+        swapDestorySwapInfoSstAgeLimitCmd(argv);
     }
 
     /* Fire the cron loop modules event. */
