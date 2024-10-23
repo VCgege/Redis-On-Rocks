@@ -44,13 +44,14 @@
 
 typedef struct wtdigest_t wtdigest;
 
+typedef long long (*wtdigestNowtime)();
 
 /** 
  * @param num_buckets, recommended to be 1~127, not supported to modify after creating, 
  * which is positively related to memory occpuied,
  * 1KB for each bucket. 
  */
-wtdigest* wtdigestCreate(uint8_t num_buckets);
+wtdigest* wtdigestCreate(uint8_t num_buckets, wtdigestNowtime nowtime);
 
 void wtdigestDestroy(wtdigest* wt);
 
@@ -63,19 +64,18 @@ unsigned long long wtdigestGetWindow(wtdigest* wt);
 
 void wtdigestReset(wtdigest* wt);
 
-unsigned long long wtdigestGetRunnningTime(wtdigest* wt, long long nowtime_ms);
+unsigned long long wtdigestGetRunnningTime(wtdigest* wt);
 
-long long wtdigestSize(wtdigest* wt, long long nowtime_ms);
+long long wtdigestSize(wtdigest* wt);
 
 /**
  * Adds a value to a wtdigest.
- * @param nowtime_ms
  * @param val The value to add.
  * @param weight The weight of this value, sugggested to set to 1 normally.
  * @return return 0 if success.
  * time complexity : nlog(n)
  */
-int wtdigestAdd(wtdigest* wt, long long nowtime_ms, double val, unsigned long long weight);
+int wtdigestAdd(wtdigest* wt, double val, unsigned long long weight);
 
 /**
  * Returns an estimate of the cutoff such that a specified fraction of the value
@@ -86,6 +86,6 @@ int wtdigestAdd(wtdigest* wt, long long nowtime_ms, double val, unsigned long lo
  * @return The value x such that cdf(x) == q,（cumulative distribution function，CDF).
  * time complexity : nlog(n)
  */
-double wtdigestQuantile(wtdigest* wt, long long nowtime_ms, double q);
+double wtdigestQuantile(wtdigest* wt, double q);
 
 #endif

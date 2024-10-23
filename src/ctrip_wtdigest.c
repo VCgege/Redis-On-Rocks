@@ -40,9 +40,10 @@ struct wtdigest_t {
     uint8_t cur_read_index;
     unsigned long long window_ms;
     unsigned long long begin_time;
+    wtdigestNowtime nowtime;
 };
 
-wtdigest* wtdigestCreate(uint8_t num_buckets)
+wtdigest* wtdigestCreate(uint8_t num_buckets, wtdigestNowtime nowtime)
 {
     serverAssert(num_buckets != 0);
     wtdigest *wt = wtdigest_malloc(sizeof(wtdigest));
@@ -54,11 +55,11 @@ wtdigest* wtdigestCreate(uint8_t num_buckets)
         serverAssert(wt->buckets[i] != NULL);
     }
 
-    wt->last_reset_time = mstime();
     wt->cur_read_index = 0;
     wt->window_ms = DEFAULT_WINDOW_MS;
-    wt->begin_time = mstime();
-
+    wt->nowtime = nowtime;
+    wt->begin_time = wt->nowtime();
+    wt->last_reset_time = wt->nowtime();
     return wt;
 }
 
@@ -82,9 +83,9 @@ unsigned long long wtdigestGetWindow(wtdigest* wt)
     return wt->window_ms;
 }
 
-unsigned long long wtdigestGetRunnningTime(wtdigest* wt, long long nowtime_ms)
+unsigned long long wtdigestGetRunnningTime(wtdigest* wt)
 {
-    return nowtime_ms - wt->begin_time;
+    return wt->nowtime() - wt->begin_time;
 }
 
 void wtdigestReset(wtdigest* wt)
@@ -93,15 +94,15 @@ void wtdigestReset(wtdigest* wt)
         td_reset(wt->buckets[i]);
     }
 
-    wt->last_reset_time = mstime();
+    wt->last_reset_time = wt->nowtime();
     wt->cur_read_index = 0;
-    wt->begin_time = mstime();
+    wt->begin_time = wt->nowtime();
 }
 
-void resetBucketsIfNeed(wtdigest* wt, long long nowtime_ms)
+void resetBucketsIfNeed(wtdigest* wt)
 {
     unsigned long long reset_period = wt->window_ms / wt->num_buckets;
-    unsigned long long time_passed = nowtime_ms - wt->last_reset_time;
+    unsigned long long time_passed = wt->nowtime() - wt->last_reset_time;
 
     if (time_passed < reset_period) {
         return;
@@ -115,13 +116,13 @@ void resetBucketsIfNeed(wtdigest* wt, long long nowtime_ms)
         td_reset(wt->buckets[reset_index]);
     }
     wt->cur_read_index = (wt->cur_read_index + num_buckets_passed) % wt->num_buckets;
-    wt->last_reset_time = nowtime_ms;
+    wt->last_reset_time = wt->nowtime();
     return;
 }
 
-int wtdigestAdd(wtdigest* wt, long long nowtime_ms, double val, unsigned long long weight)
+int wtdigestAdd(wtdigest* wt, double val, unsigned long long weight)
 {
-    resetBucketsIfNeed(wt, nowtime_ms);
+    resetBucketsIfNeed(wt);
 
     for (uint8_t i = 0; i < wt->num_buckets; i++) {
         int res = td_add(wt->buckets[i], val, weight);
@@ -132,15 +133,15 @@ int wtdigestAdd(wtdigest* wt, long long nowtime_ms, double val, unsigned long lo
     return 0;
 }
 
-double wtdigestQuantile(wtdigest* wt, long long nowtime_ms, double q)
+double wtdigestQuantile(wtdigest* wt, double q)
 {
-    resetBucketsIfNeed(wt, nowtime_ms);
+    resetBucketsIfNeed(wt);
     return td_quantile(wt->buckets[wt->cur_read_index], q);
 }
 
-long long wtdigestSize(wtdigest* wt, long long nowtime_ms)
+long long wtdigestSize(wtdigest* wt)
 {
-    resetBucketsIfNeed(wt, nowtime_ms);
+    resetBucketsIfNeed(wt);
     return td_size(wt->buckets[wt->cur_read_index]);
 }
 
@@ -152,7 +153,7 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
     int error = 0;
 
         TEST("wtdigest: create destroy") {
-            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
+            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS, mstime);
             wtdigestDestroy(wt);
         }
 
@@ -160,7 +161,7 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
 
             unsigned long long start_time = mstime();
             usleep(10000);
-            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
+            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS, mstime);
             test_assert(wt->begin_time >= start_time + 10);
 
             test_assert(wtdigestGetWindow(wt) == DEFAULT_WINDOW_MS);
@@ -168,7 +169,7 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
             test_assert(wtdigestGetWindow(wt) == 7200000);
 
             usleep(10000);
-            unsigned long long running_time = wtdigestGetRunnningTime(wt, mstime());
+            unsigned long long running_time = wtdigestGetRunnningTime(wt);
             test_assert(running_time >= 10);
 
             unsigned long long end_time = mstime();
@@ -179,42 +180,42 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
 
         TEST("wtdigest: basic add Quantile") {
 
-            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
+            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS, mstime);
 
-            test_assert(wtdigestSize(wt, mstime()) == 0);
+            test_assert(wtdigestSize(wt) == 0);
 
             for (int i = 0; i < 30; i++) {
-                wtdigestAdd(wt, mstime(), 200, 1);
+                wtdigestAdd(wt, 200, 1);
             }
-            test_assert(wtdigestSize(wt, mstime()) == 30);
+            test_assert(wtdigestSize(wt) == 30);
 
             for (int i = 0; i < 50; i++) {
-                wtdigestAdd(wt, mstime(), 100, 1);
+                wtdigestAdd(wt, 100, 1);
             }
-            test_assert(wtdigestSize(wt, mstime()) == 80);
+            test_assert(wtdigestSize(wt) == 80);
 
             for (int i = 0; i < 20; i++) {
-                wtdigestAdd(wt, mstime(), 300, 1);
+                wtdigestAdd(wt, 300, 1);
             }
 
-            wtdigestAdd(wt, mstime(), 400, 1);
-            wtdigestAdd(wt, mstime(), 4, 1);
+            wtdigestAdd(wt, 400, 1);
+            wtdigestAdd(wt, 4, 1);
 
             int q;
 
-            q = (int)wtdigestQuantile(wt, mstime(), 0.001);
+            q = (int)wtdigestQuantile(wt, 0.001);
             test_assert(4 == q);
 
-            q = (int)wtdigestQuantile(wt, mstime(), 0.5);
+            q = (int)wtdigestQuantile(wt, 0.5);
             test_assert(150 == q);
 
-            q = (int)wtdigestQuantile(wt, mstime(), 0.80);
+            q = (int)wtdigestQuantile(wt, 0.80);
             test_assert(268 == q);
 
-            q = (int)wtdigestQuantile(wt, mstime(), 0.99);
+            q = (int)wtdigestQuantile(wt, 0.99);
             test_assert(300 == q);
 
-            q = (int)wtdigestQuantile(wt, mstime(), 0.999);
+            q = (int)wtdigestQuantile(wt, 0.999);
             test_assert(400 == q);
 
             wtdigestDestroy(wt);
@@ -222,78 +223,78 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
 
         TEST("wtdigest: boundary value test") {
 
-            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
+            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS, mstime);
             double q;
 
             for (int i = 0; i < 300; i++) {
-                wtdigestAdd(wt, mstime(), __DBL_MAX__, 1);
+                wtdigestAdd(wt, __DBL_MAX__, 1);
             }
 
-            q = wtdigestQuantile(wt, mstime(), 0.99);
+            q = wtdigestQuantile(wt, 0.99);
             test_assert(__DBL_MAX__ == q);
 
             wtdigestReset(wt);
             for (int i = 0; i < 300; i++) {
-                wtdigestAdd(wt, mstime(), __DBL_MIN__, 1);
+                wtdigestAdd(wt, __DBL_MIN__, 1);
             }
-            q = wtdigestQuantile(wt, mstime(), 0.99);
+            q = wtdigestQuantile(wt, 0.99);
             test_assert(__DBL_MIN__ == q);
 
             wtdigestReset(wt);
             for (int i = 0; i < 300; i++) {
-                wtdigestAdd(wt, mstime(), (double)LLONG_MAX, 1);
+                wtdigestAdd(wt, (double)LLONG_MAX, 1);
             }
-            q = wtdigestQuantile(wt, mstime(), 0.99);
+            q = wtdigestQuantile(wt, 0.99);
             test_assert(LLONG_MAX == q);
 
             wtdigestReset(wt);
             for (int i = 0; i < 300; i++) {
-                wtdigestAdd(wt, mstime(), (double)LLONG_MIN, 1);
+                wtdigestAdd(wt, (double)LLONG_MIN, 1);
             }
-            q = wtdigestQuantile(wt, mstime(), 0.99);
+            q = wtdigestQuantile(wt, 0.99);
             test_assert(LLONG_MIN == q);
 
             wtdigestReset(wt);
             for (int i = 0; i < 100; i++) {
-                wtdigestAdd(wt, mstime(), (double)LLONG_MIN, 1);
+                wtdigestAdd(wt, (double)LLONG_MIN, 1);
             }
             for (int i = 0; i < 100; i++) {
-                wtdigestAdd(wt, mstime(), (double)LLONG_MAX, 1);
+                wtdigestAdd(wt, (double)LLONG_MAX, 1);
             }
-            q = wtdigestQuantile(wt, mstime(), 0.99);
+            q = wtdigestQuantile(wt, 0.99);
             test_assert(LLONG_MAX == q);
 
             wtdigestReset(wt);
             for (int i = 0; i < 100; i++) {
-                wtdigestAdd(wt, mstime(), __DBL_MAX__, 1);
+                wtdigestAdd(wt, __DBL_MAX__, 1);
             }
             for (int i = 0; i < 100; i++) {
-                wtdigestAdd(wt, mstime(), __DBL_MIN__, 1);
+                wtdigestAdd(wt, __DBL_MIN__, 1);
             }
-            q = wtdigestQuantile(wt, mstime(), 0.99);
+            q = wtdigestQuantile(wt, 0.99);
             test_assert(__DBL_MAX__ == q);
 
             wtdigestReset(wt);
             for (int i = 0; i < 100; i++) {
-                wtdigestAdd(wt, mstime(), (double)LLONG_MAX, 1);
+                wtdigestAdd(wt, (double)LLONG_MAX, 1);
             }
             for (int i = 0; i < 100; i++) {
-                wtdigestAdd(wt, mstime(), 1, 1);
+                wtdigestAdd(wt, 1, 1);
             }
-            q = wtdigestQuantile(wt, mstime(), 0.8);
+            q = wtdigestQuantile(wt, 0.8);
             test_assert(LLONG_MAX == q);
 
-            q = wtdigestQuantile(wt, mstime(), 0.55);
+            q = wtdigestQuantile(wt, 0.55);
             test_assert(LLONG_MAX == q);
 
-            q = wtdigestQuantile(wt, mstime(), 0.5);
+            q = wtdigestQuantile(wt, 0.5);
             test_assert(LLONG_MAX > q);
             test_assert(1 < q);
 
-            q = wtdigestQuantile(wt, mstime(), 0.35);
+            q = wtdigestQuantile(wt, 0.35);
             test_assert(1 == q);
 
-            q = wtdigestQuantile(wt, mstime(), 0.2);
+            q = wtdigestQuantile(wt, 0.2);
             test_assert(1 == q);
 
             wtdigestDestroy(wt);
@@ -301,14 +302,14 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
 
         TEST("wtdigest: bucket rotate reading") {
 
-            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
+            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS, mstime);
 
             /* reset period = 100ms */
             wtdigestSetWindow(wt, 100 * WTD_DEFAULT_NUM_BUCKETS);
 
             /* rotate for two circle */
             for (int i = 0; i < WTD_DEFAULT_NUM_BUCKETS * 2; i++) {
-                wtdigestAdd(wt, mstime(), 10, 1);
+                wtdigestAdd(wt, 10, 1);
                 test_assert((i % WTD_DEFAULT_NUM_BUCKETS) == wt->cur_read_index);
 
                 long long size = td_size(wt->buckets[wt->cur_read_index]);
@@ -328,16 +329,16 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
 
         TEST("wtdigest: bucket cur_read_index rotate") {
 
-            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
+            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS, mstime);
 
             /* reset period = 100ms */
             wtdigestSetWindow(wt, 100 * WTD_DEFAULT_NUM_BUCKETS);
-            wtdigestAdd(wt, mstime(), 10, 1);
+            wtdigestAdd(wt, 10, 1);
 
             uint8_t index1 = wt->cur_read_index;
             usleep(300000);
 
-            (void)wtdigestQuantile(wt, mstime(), 0.5);
+            (void)wtdigestQuantile(wt, 0.5);
 
             /* reset and pass 3 buckets */
             uint8_t index2 = wt->cur_read_index;
@@ -345,7 +346,7 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
 
             usleep(400000);
 
-            (void)wtdigestQuantile(wt, mstime(), 0.5);
+            (void)wtdigestQuantile(wt, 0.5);
 
             uint8_t index3 = wt->cur_read_index;
             test_assert(index3 == 1);
@@ -354,7 +355,7 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
         }
 
         TEST("wtdigest: rotate add Quantile") {
-            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
+            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS, mstime);
 
             /* reset period = 1ms */
             wtdigestSetWindow(wt, 1 * WTD_DEFAULT_NUM_BUCKETS);
@@ -365,13 +366,13 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
                 /* add different value at each reset period */
                 if (j % WTD_DEFAULT_NUM_BUCKETS <= 2) {
                     for (int i = 0; i < 10; i++) {
-                        wtdigestAdd(wt, mstime(), 100, 1);
+                        wtdigestAdd(wt, 100, 1);
                     }
                 }
 
                 if (j % WTD_DEFAULT_NUM_BUCKETS == 3 || j % WTD_DEFAULT_NUM_BUCKETS == 4) {
                     for (int i = 0; i < 10; i++) {
-                        wtdigestAdd(wt, mstime(), 200, 1);
+                        wtdigestAdd(wt, 200, 1);
                     }
                 }
 
@@ -379,11 +380,11 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
 
                 if (j % WTD_DEFAULT_NUM_BUCKETS == 5) {
                     for (int i = 0; i < 10; i++) {
-                        wtdigestAdd(wt, mstime(), 300, 1);
+                        wtdigestAdd(wt, 300, 1);
                     }
                 }
 
-                int q = (int)wtdigestQuantile(wt, mstime(), 0.5);
+                int q = (int)wtdigestQuantile(wt, 0.5);
 
                 test_assert(100 <= q);
                 test_assert(300 >= q);
@@ -394,12 +395,12 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
 
         TEST("wtdigest: reset then add") {
         
-            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
+            wtdigest *wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS, mstime);
         
             /* reset period = 100ms */
             wtdigestSetWindow(wt, 100 * WTD_DEFAULT_NUM_BUCKETS);
             usleep(200000);
-            wtdigestAdd(wt, mstime(), 100, 1);
+            wtdigestAdd(wt, 100, 1);
             test_assert(wt->cur_read_index == 2);
 
             wtdigestReset(wt);
@@ -409,15 +410,15 @@ int wtdigestTest(int argc, char *argv[], int accurate) {
             }
             test_assert(wt->cur_read_index == 0);
 
-            double q = wtdigestQuantile(wt, mstime(), 0.5);
+            double q = wtdigestQuantile(wt, 0.5);
             test_assert(isnan(q));
 
-            q = wtdigestQuantile(wt, mstime(), 0.9);
+            q = wtdigestQuantile(wt, 0.9);
             test_assert(isnan(q));
 
             /* restart to work */
             usleep(200000);       
-            wtdigestAdd(wt, mstime(), 100, 1);
+            wtdigestAdd(wt, 100, 1);
             test_assert(wt->cur_read_index == 2);
 
             test_assert(1 == td_size(wt->buckets[wt->cur_read_index]));

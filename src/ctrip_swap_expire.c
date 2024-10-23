@@ -284,7 +284,7 @@ int scanExpireDbCycle(redisDb *db, int type, long long timelimit) {
             }
 
             if (server.swap_ttl_compact_enabled) {
-                int res = wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, server.mstime, (double)expire_add, 1);
+                int res = wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, (double)expire_add, 1);
                 serverAssert(res == 0);
             }
         }

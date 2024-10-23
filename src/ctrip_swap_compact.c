@@ -542,10 +542,14 @@ end:
     cfMetasFree(metas);
 }
 
+long long getServerMstime() {
+    return server.mstime;
+}
+
 swapExpireStatus *swapExpireStatusNew() {
 
     swapExpireStatus *stats = zmalloc(sizeof(swapExpireStatus));
-    stats->expire_wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS);
+    stats->expire_wt = wtdigestCreate(WTD_DEFAULT_NUM_BUCKETS, getServerMstime);
     wtdigestSetWindow(stats->expire_wt, SWAP_TTL_COMPACT_DEFAULT_EXPIRE_WT_WINDOW);
 
     stats->sst_age_limit = 0;
@@ -1085,7 +1089,7 @@ int swapFilterTest(int argc, char **argv, int accurate) {
 
         /* mock server operation 
          * add expire, get sst_age_limit and task */
-        wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, mstime(), 10, 1);
+        wtdigestAdd(server.swap_ttl_compact_ctx->expire_stats->expire_wt, 10, 1);
         server.swap_ttl_compact_ctx->expire_stats->sst_age_limit = 10;
         server.swap_ttl_compact_ctx->task = compactTaskNew(TYPE_TTL_COMPACT);
 
@@ -1093,7 +1097,7 @@ int swapFilterTest(int argc, char **argv, int accurate) {
 
         test_assert(server.swap_ttl_compact_ctx->task == NULL);
         test_assert(server.swap_ttl_compact_ctx->expire_stats->sst_age_limit == 0);
-        test_assert(wtdigestSize(server.swap_ttl_compact_ctx->expire_stats->expire_wt, mstime()) == 0);
+        test_assert(wtdigestSize(server.swap_ttl_compact_ctx->expire_stats->expire_wt) == 0);
 
         swapTtlCompactCtxFree(server.swap_ttl_compact_ctx); 
         server.swap_ttl_compact_ctx = NULL;

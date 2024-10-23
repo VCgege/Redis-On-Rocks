@@ -399,14 +399,14 @@ bool isSwapInfoSupported(void) {
 }
 
 /* SWAP.INFO SST-AGE-LIMIT <sst age limit> */
-void swapBuildSwapInfoSstAgeLimitCmd(robj **argv, long long sst_age_limit) {
+void swapBuildSwapInfoSstAgeLimitCmd(robj *argv[3], long long sst_age_limit) {
 
     argv[0] = shared.swap_info;
     argv[1] = shared.sst_age_limit;
     argv[2] = createStringObjectFromLongLong(sst_age_limit);
 }
 
-void swapDestorySwapInfoSstAgeLimitCmd(robj **argv) {
+void swapDestorySwapInfoSstAgeLimitCmd(robj *argv[3]) {
     decrRefCount(argv[2]);
 }
 
